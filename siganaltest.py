@@ -140,4 +140,3 @@ plt.grid()
 plt.xticks(log_ticks, [f'{tick:.1f}' for tick in log_ticks]) # Customize the ticks on x-axis for non-logarithmic powers
 plt.axis([0.05, 500, -90, 10])
 plt.show()
-
