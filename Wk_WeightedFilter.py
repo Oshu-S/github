@@ -74,8 +74,8 @@ den_t = [omega4**-2,(Q4*omega4)**-1,1]
 # UPWARD STEP
 omega5 = 2*math.pi*f5
 omega6 = 2*math.pi*f6
-num_s = [1,omega5/Q5,omega5**2]
-den_s = [1,omega6/Q6,omega6**2]
+num_s = [1,omega5/Q5,omega5**2];
+den_s = [1,omega6/Q6,omega6**2];
 
 # Combine the transfer functions by multiplying their numerators and denominators
 def combine_transfer_functions(num1, den1, num2, den2, num3, den3, num4, den4):
@@ -91,8 +91,8 @@ def combine_transfer_functions(num1, den1, num2, den2, num3, den3, num4, den4):
 num_wk, den_wk = combine_transfer_functions(num_h, den_h, num_l, den_l, num_t, den_t, num_s, den_s)
 
 # Print transfer function for Wk
-# H = control.tf(num_wk, den_wk)
-# print(H)
+H = control.tf(num_wk, den_wk)
+print(H)
 
 # Convert to discrete-time using bilinear transformation
 b_discrete, a_discrete = bilinear(num_wk, den_wk, fs)
@@ -123,7 +123,8 @@ plt.legend()
 fft_filtered_data = pd.DataFrame({"Frequency": freqs, "Magnitude": filtered_magnitude})
 fft_filtered_data.to_csv("fft_filtered_accelerometer_data.csv", index=False)
 
-## PLOT FREQUENCY RESPONSE W_K
+
+## PLOT FREQUENCY RESPONSE Wd ##
 from scipy.signal import freqs
 import matplotlib.pyplot as plt
 import numpy as np
@@ -140,5 +141,6 @@ plt.title("Frequency Response of Combined Filter")
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Frequency weightings (dB)")
 plt.grid()
+plt.axis([0, 300, -90, 10])
 plt.xticks(custom_ticks, labels=[str(tick) for tick in custom_ticks])  # Apply custom frequency scale
 plt.show()
