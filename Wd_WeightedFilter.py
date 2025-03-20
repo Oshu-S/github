@@ -11,7 +11,7 @@ data = pd.read_excel("siganaltestdata.xlsx")
 time = data["Time"].values  # Time in seconds
 acceleration = data["Acceleration"].values  # Acceleration in m/s²
 
-# Compute sampling rate
+# Compute sampling ratepip
 dt = np.mean(np.diff(time))  # Time step (assuming uniform sampling)
 fs = 1 / dt  # Sampling frequency (Hz)
 N = len(acceleration)  # Number of data points

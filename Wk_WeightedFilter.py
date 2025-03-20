@@ -141,6 +141,6 @@ plt.title("Frequency Response of Combined Filter")
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Frequency weightings (dB)")
 plt.grid()
-plt.axis([0, 300, -90, 10])
+# plt.axis([0, 300, -90, 10])
 plt.xticks(custom_ticks, labels=[str(tick) for tick in custom_ticks])  # Apply custom frequency scale
 plt.show()
