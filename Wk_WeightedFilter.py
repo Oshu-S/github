@@ -90,9 +90,9 @@ def combine_transfer_functions(num1, den1, num2, den2, num3, den3, num4, den4):
 # Get the combined transfer function
 num_wk, den_wk = combine_transfer_functions(num_h, den_h, num_l, den_l, num_t, den_t, num_s, den_s)
 
-# Print transfer function for Wk
-H = control.tf(num_wk, den_wk)
-print(H)
+# # Print transfer function for Wk
+# H = control.tf(num_wk, den_wk)
+# print(H)
 
 # Convert to discrete-time using bilinear transformation
 b_discrete, a_discrete = bilinear(num_wk, den_wk, fs)

@@ -83,9 +83,9 @@ def combine_transfer_functions(num1, den1, num2, den2, num3, den3, num4, den4):
 # Get the combined transfer function
 num_wd, den_wd = combine_transfer_functions(num_h, den_h, num_l, den_l, num_t, den_t, num_s, den_s)
 
-# Print transfer function for Wd
-H = control.tf(num_wd, den_wd)
-print(H)
+# # Print transfer function for Wd
+# H = control.tf(num_wd, den_wd)
+# print(H)
 
 # Convert to discrete-time using bilinear transformation
 b_discrete, a_discrete = bilinear(num_wd, den_wd, fs)
@@ -134,6 +134,6 @@ plt.title("Frequency Response of Combined Filter")
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Frequency weightings (dB)")
 plt.grid()
-plt.axis([0, 300, -90, 10])
+# plt.axis([0, 300, -90, 10])
 plt.xticks(custom_ticks, labels=[str(tick) for tick in custom_ticks])  # Apply custom frequency scale
 plt.show()
