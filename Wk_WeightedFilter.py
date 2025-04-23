@@ -124,11 +124,9 @@ fft_filtered_data = pd.DataFrame({"Frequency": freqs, "Magnitude": filtered_magn
 fft_filtered_data.to_csv("fft_filtered_accelerometer_data.csv", index=False)
 
 
-## PLOT FREQUENCY RESPONSE Wd ##
-from scipy.signal import freqs
-import matplotlib.pyplot as plt
-import numpy as np
+## PLOT FREQUENCY RESPONSE Wk ##
 # Compute frequency response
+from scipy.signal import freqs
 w, h = freqs(num_wk, den_wk, worN=np.logspace(np.log10(0.016), np.log10(250), 1000))  # Log scale from 0.016 Hz to 250 Hz
 # Convert w from rad/s to Hz
 f_hz = w / (2 * np.pi)
