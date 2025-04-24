@@ -44,36 +44,29 @@ plt.ylim(0, 0.031)
 plt.grid(True)
 plt.tight_layout()
 
-# ----------------- ISO Filter - Wk, Vertical -----------------
+# ----------------- BS 6841 Filter - Wb, Vertical -----------------
 f1, f2 = 0.4, 100       # Band-limiting
-f3, f4 = 12.5, 12.5     # Accel.-velocity transition
-Q4 = 0.63
-f5, f6 = 2.37, 3.35     # Upward step
-Q5, Q6 = 0.91, 0.91
+Q1 = 0.71
+f3, f4 = 16, 16     # Frequency Weighting
+f5 = 2.5
+f6 = 4
+Q2 = 0.55
+Q3 = 0.9
+Q4 = 0.95
+K = 0.4
 
-# Convert to angular frequencies (rad/s)
-omega1 = 2 * math.pi * f1
-omega2 = 2 * math.pi * f2
-omega3 = 2 * math.pi * f3
-omega4 = 2 * math.pi * f4
-omega5 = 2 * math.pi * f5
-omega6 = 2 * math.pi * f6
+# Band-limiting
+num_b = [4*math.pi**2*f2**2,0,0]
+den_b = [1, (2*math.pi*f1/Q1) + (2*math.pi*f2/Q1), (4*f1**2*math.pi**2) + (4*f1*f2*math.pi**2)/(Q1**2) + (4*f2**2*math.pi**2), (8*f1**2*f2*math.pi**3/Q1) + (8*f1*f2**2*math.pi**3/Q1), 16*f1**2*f2**2*math.pi**4]
+# # S**2
+# (4*f1**2*math.pi**2) + (4*f1*f2*math.pi**2)/(Q1**2) + (4*f2**2*math.pi**2)
+# # S
+# (8*f1**2*f2*math.pi**3/Q1) + (8*f1*f2**2*math.pi**3/Q1)
+# # C
+# 16*f1**2*f2**2*math.pi**4
 
-# HIGH PASS
-num_h = [1,0,0]
-den_h = [1,math.sqrt(2)*omega1,omega1**2]
-
-# LOW PASS
-num_l = 1
-den_l = [omega2**-2,math.sqrt(2)/omega2,1]
-
-# ACCEL.-VELOCITY TRANSITION
-num_t = [omega3**-1,1]
-den_t = [omega4**-2,(Q4*omega4)**-1,1]
-
-# UPWARD STEP
-num_s = [1,omega5/Q5,omega5**2];
-den_s = [1,omega6/Q6,omega6**2];
+# Frequency Weighting
+# NOT FINISHED UP TO HERE ;OJGnw'oigWNGwpoigwN'PNgwie'pnegwi'oisndfv;ojnz;oas'[oiahgwi'on] -013284-1248-581-358135-8135-98153-9815-9815-8-135-1358-1538-1583-158-1358-58-53-3580153081538-1538-1538158-5
 
 # Combine the transfer functions by multiplying their numerators and denominators
 def combine_transfer_functions(num1, den1, num2, den2, num3, den3, num4, den4):
@@ -81,12 +74,12 @@ def combine_transfer_functions(num1, den1, num2, den2, num3, den3, num4, den4):
     den = np.polymul(np.polymul(np.polymul(den1, den2), den3), den4)
     return num, den
 
-num_wk, den_wk = combine_transfer_functions(num_h, den_h, num_l, den_l, num_t, den_t, num_s, den_s)
+num_wb, den_wb = combine_transfer_functions(num_h, den_h, num_l, den_l, num_t, den_t, num_s, den_s)
 
-# Plotting ISO Filter on log-log scale
+# Plotting BS 6841 Filter on log-log scale
 freq_range = np.logspace(-1, 2.5, 1000)
 omega = 2 * np.pi * freq_range
-_, H = freqs(num_wk, den_wk, worN=omega)
+_, H = freqs(num_wb, den_wb, worN=omega)
 H_dB = 20 * np.log10(np.abs(H)) # Convert to dB
 
 
@@ -101,7 +94,7 @@ plt.semilogx(freq_range, H_dB) # ISO 2631 & AS 2670 Axes
 plt.grid(True, which="both", ls="--")
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Magnitude (dB)")
-plt.title("ISO 2631 - Wk Filter")
+plt.title("BS 6841 - Wb Filter")
 plt.tight_layout()
 
 # ----------------- Filtering -----------------
