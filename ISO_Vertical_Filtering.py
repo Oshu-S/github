@@ -1,58 +1,54 @@
 import numpy as np
 import pandas as pd
 import math
-import control
 import matplotlib.pyplot as plt
-from scipy.fftpack import fft, ifft, fftfreq
-from scipy.signal import filtfilt, tf2zpk, bilinear, freqs
-# Load the CSV file
+from scipy.fftpack import fft, fftfreq
+from scipy.signal import freqs
+from scipy.interpolate import interp1d
+
+# Load data
 data = pd.read_csv("results_500mc_trial_matrix.csv")
+acceleration = data.iloc[0, 1:].values  # Use trial 0
 
-# Extract acceleration data for one trial (excluding index column)
-acceleration = data.iloc[0, 1:].values
-
-# Assumed sampling rate (Hz) — adjust this based on actual setup
-fs = 100  # Hz
+# Time domain setup
+fs = 100  # Hz (time step = 0.01 s)
+dt = 1 / fs
 n = len(acceleration)
-t = np.arange(n) / fs  # Time axis
+t = np.arange(n) * dt
 
-# FFT calculation
+# ----------------- FFT (Unfiltered Signal) -----------------
 acc_fft = fft(acceleration)
-frequencies = fftfreq(n, 1/fs)
+frequencies = fftfreq(n, dt)
 magnitude = np.abs(acc_fft) / n  # Normalize
 
-# Plotting
-# fig, axs = plt.subplots(2, 1, figsize=(12, 8))
-
-# Acceleration over time
-plt.figure(figsize=(10, 5))
-plt.plot(t, acceleration)
-plt.title("Unfiltered Acceleration Over Time")
-plt.xlabel("Time (s)")
-plt.ylabel("Acceleration")
-plt.grid(True)
-
-
-# Frequency spectrum (positive frequencies only)
+# Keep only positive frequencies for plotting
 positive_freqs = frequencies[:n // 2]
 positive_magnitude = magnitude[:n // 2]
+
+# Plotting Unfiltered Acceleration Time-History
+plt.figure(figsize=(10, 5))
+plt.plot(t, acceleration)
+plt.title("Unfiltered Acceleration Time-History")
+plt.xlabel("Time (s)")
+plt.ylabel("Acceleration (m/s²)")
+plt.grid(True)
+
+# Frequency spectrum (positive frequencies only)
 plt.figure(figsize=(10, 5))
 plt.plot(positive_freqs, positive_magnitude)
 plt.title("Unfiltered Frequency Spectrum")
 plt.xlabel("Frequency (Hz)")
-plt.ylabel("Magnitude")
+plt.ylabel("Acceleration (m/s²)")
 plt.xlim(0, 20)
 plt.ylim(0, 0.031)
 plt.grid(True)
 plt.tight_layout()
 
-###################################################### MAKING ISO FILTER ############################################
-
-# --- Wk Transfer Function Parameters ---# Band-Limiting
+# ----------------- ISO Filter - Wk, Vertical -----------------
 f1, f2 = 0.4, 100       # Band-limiting
-f3, f4 = 12.5, 12.5      # Accel.-velocity transition
+f3, f4 = 12.5, 12.5     # Accel.-velocity transition
 Q4 = 0.63
-f5, f6 = 2.37, 3.35      # Upward step
+f5, f6 = 2.37, 3.35     # Upward step
 Q5, Q6 = 0.91, 0.91
 
 # Convert to angular frequencies (rad/s)
@@ -87,54 +83,37 @@ def combine_transfer_functions(num1, den1, num2, den2, num3, den3, num4, den4):
 
 num_wk, den_wk = combine_transfer_functions(num_h, den_h, num_l, den_l, num_t, den_t, num_s, den_s)
 
-# Frequency range for plotting (Hz)
-frequencies = np.logspace(-1, 2.5, 1000)
-omega = 2 * np.pi * frequencies
-
-# Frequency response in dB
+# Plotting ISO Filter on log-log scale
+freq_range = np.logspace(-1, 2.5, 1000)
+omega = 2 * np.pi * freq_range
 _, H = freqs(num_wk, den_wk, worN=omega)
-H_dB = 20 * np.log10(np.abs(H))
+H_dB = 20 * np.log10(np.abs(H)) # Convert to dB
 
-# --- Plot (Magnitude in dB) ---
-plt.figure(figsize=(10, 6))
-plt.semilogx(frequencies, H_dB, label="|H(f)| in dB", color='tab:blue')
-plt.grid(True, which="both", ls="--", alpha=0.6)
+
+plt.figure(figsize=(10, 5))
+plt.semilogx(freq_range, H_dB, label="|H(f)| in dB")
+plt.grid(True, which="both", ls="--")
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Magnitude (dB)")
-plt.title("Wk Transfer Function (Magnitude in dB)")
+plt.title("Wk Transfer Function")
 plt.tight_layout()
 
-###################################################### FILTERING DATA ############################################
+# ----------------- Filtering -----------------
+# Interpolate H onto FFT frequency bins
+H_interp = interp1d(freq_range, H, kind='linear', fill_value="extrapolate")
+H_vals = H_interp(np.abs(frequencies ))  # Use abs to get symmetric frequency behavior
+Yf = acc_fft * H_vals  # Apply filter --> Multiply acceleration by Tranfer Function
 
-omega = 2 * np.pi * frequencies  # Convert to rad/s
-
-# FFT of acceleration signal
-Xf = fft(acceleration)
-
-from scipy.interpolate import interp1d
-
-# Evaluate transfer function H(jω) at FFT frequency points
-fft_frequencies = fftfreq(n, 1/fs)  # FFT frequency points
-positive_indices = fft_frequencies >= 0  # Only positive frequencies
-
-# Interpolate H to match FFT frequency points
-H_interp = interp1d(frequencies, H, kind='linear', fill_value="extrapolate")
-H_at_fft = H_interp(fft_frequencies[positive_indices])
-
-# Filtered spectrum: multiply original FFT by H
-Yf = H_at_fft * Xf[positive_indices]
-magnitude_filtered = np.abs(Yf) / n
-
-# Use only positive frequencies for plotting
-positive_freqs = fft_frequencies[positive_indices]
-positive_magnitude = magnitude_filtered
+# Get magnitude of filtered result
+filtered_magnitude = np.abs(Yf[:n//2]) / n
+filtered_freqs = frequencies [:n//2]
 
 # Plot: Frequency vs Filtered Acceleration Magnitude
 plt.figure(figsize=(10, 5))
-plt.plot(positive_freqs, positive_magnitude)
-plt.title("Filtered Frequency Spectrum (Freq vs Acceleration)")
+plt.plot(filtered_freqs, filtered_magnitude)
+plt.title("Filtered Frequency Spectrum")
 plt.xlabel("Frequency (Hz)")
-plt.ylabel("Filtered Acceleration Magnitude")
+plt.ylabel("Acceleration (m/s²)")
 plt.grid(True)
 plt.tight_layout()
 plt.xlim(0, 20)
