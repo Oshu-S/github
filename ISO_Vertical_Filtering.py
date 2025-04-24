@@ -91,6 +91,7 @@ H_dB = 20 * np.log10(np.abs(H)) # Convert to dB
 
 
 plt.figure(figsize=(10, 5))
+
 plt.semilogx(freq_range, H_dB) # ISO 2631 & AS 2670 Axes
 
 # BS 6841 & BS 6472 Axes
