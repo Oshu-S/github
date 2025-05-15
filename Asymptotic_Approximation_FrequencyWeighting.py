@@ -92,7 +92,8 @@ weighted_magnitude_pos = weighted_magnitude[:n//2 + 1]
 plt.figure(figsize=(10, 5))
 plt.loglog(positive_freqs, W, label="Weighting (m/s²)") # Plot in m/s²
 # plt.semilogx(positive_freqs, 20 * np.log10(W), label="Weighting (dB)") # Plot in dB
-# Define 1/3-octave frequency axis ticks
+
+# Define 1/3-octave frequency axis ticks --> Comment out if you want to see frequency position when you hover cursor over the plot
 octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5,
                            1, 2, 4, 8, 16, 31.5, 63])
 plt.xticks(octave_centers, [str(f) for f in octave_centers]) # Apply custom ticks and labels to x-axis
