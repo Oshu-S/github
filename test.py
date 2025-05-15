@@ -7,7 +7,6 @@ from scipy.signal import freqs
 from scipy.interpolate import interp1d
 from scipy.fft import fft, ifft
 
-
 # Load data
 data = pd.read_csv("results_500mc_trial_matrix.csv")
 acceleration = data.iloc[0, 1:].values  # Use trial 0
@@ -23,35 +22,48 @@ freq_vector = fftfreq(n, d=dt)
 acc_fft = fft(acceleration)
 magnitude = np.abs(acc_fft) / n  # Normalize
 
-
 # 3. Create weighting vector (same length as FFT)
 weights = np.ones_like(freq_vector)
 
 # Apply weighting only for positive frequencies (mirror for negative)
 positive_freqs = freq_vector[:n//2 + 1]
-W = np.ones_like(positive_freqs)
+W = np.zeros_like(positive_freqs)
 positive_magnitude = magnitude[:n//2 + 1]
 
-# Apply weighting parameters
-# Segment 0: 0.0–0.5 Hz — linear ramp up to 0.4 (matches 6 dB/octave)
-mask_0 = (positive_freqs > 0.0) & (positive_freqs < 0.5)
-W[mask_0] = 0.4 * positive_freqs[mask_0] / 0.5
+# Create weighting parameters
+# ---- Parameters ----
+scale = 1.0         # Global vertical scale (e.g. 1.0 for default, 0.5 to halve everything)
+f_low = 0.5         # Lower edge of flat 0.4 region
+f_mid_start = 2.0   # Start of ramp up (segment 2)
+f_mid_end = 5.0     # End of ramp up (segment 2)
+f_flat_start = f_mid_end  # Start of flat 1.0 region (segment 3)
+f_flat_end = 16.0         # End of flat 1.0 region
 
-# Segment 1: 0.5–2.0 Hz — constant 0.4
-W[(positive_freqs >= 0.5) & (positive_freqs <= 2.0)] = 0.4
+# Value at the end of Segment 1 (flat) and start of Segment 2 (ramp)
+val_low = 0.4 * scale
+val_flat = 1.0 * scale
 
-# Segment 2: 2.0–5.0 Hz — W(f) = f / 5
-mask_2 = (positive_freqs > 2.0) & (positive_freqs <= 5.0)
-W[mask_2] = positive_freqs[mask_2] / 5
+# Segment 0: 0.0–f_low — linear ramp to val_low
+mask_0 = (positive_freqs > 0.0) & (positive_freqs < f_low)
+W[mask_0] = val_low * (positive_freqs[mask_0] / f_low)
 
-# Segment 3: 5.0–16.0 Hz — constant 1.0
-W[(positive_freqs > 5.0) & (positive_freqs <= 16.0)] = 1.0
+# Segment 1: f_low–f_mid_start — constant at val_low
+mask_1 = (positive_freqs >= f_low) & (positive_freqs <= f_mid_start)
+W[mask_1] = val_low
 
-# Segment 4: 16.0–100.0 Hz — W(f) = 16 / f
-mask_4 = (positive_freqs > 16.0)
-safe_freqs = np.copy(positive_freqs) # Guard against divide-by-zero in segment 4
-safe_freqs[safe_freqs < 0.01] = 0.01 # If any values are exactly zero or very close to zero, 16.0 / f can cause instability.
-W[mask_4] = 16.0 / safe_freqs[mask_4]
+# Segment 2: f_mid_start–f_mid_end — linear ramp to val_flat
+mask_2 = (positive_freqs > f_mid_start) & (positive_freqs <= f_mid_end)
+W[mask_2] = val_low + (val_flat - val_low) * (
+    (positive_freqs[mask_2] - f_mid_start) / (f_mid_end - f_mid_start)
+)
+
+# Segment 3: f_flat_start–f_flat_end — constant at val_flat
+mask_3 = (positive_freqs > f_flat_start) & (positive_freqs <= f_flat_end)
+W[mask_3] = val_flat
+
+# Segment 4: > f_flat_end — decaying 6 dB/oct slope (W = val_flat * f_flat_end / f)
+mask_4 = (positive_freqs > f_flat_end)
+W[mask_4] = val_flat * f_flat_end / positive_freqs[mask_4]
 
 # Apply to full spectrum (positive + symmetric negative side)
 weights[:n//2 + 1] = W
@@ -77,8 +89,8 @@ weighted_magnitude_pos = weighted_magnitude[:n//2 + 1]
 
 # Plot frequency weighting
 plt.figure(figsize=(10, 5))
-plt.loglog(positive_freqs, W) # Plot in m/s²
-# plt.semilogx(positive_freqs, 20 * np.log10(W)) # Plot in dB
+# plt.loglog(positive_freqs, W) # Plot in m/s²
+plt.semilogx(positive_freqs, 20 * np.log10(W)) # Plot in dB
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Frequency Weighting (m/s²)")
 plt.title("Asymptotic Approximation of Vertical Weighting")
@@ -128,4 +140,30 @@ plt.ylim(0, 0.031)
 plt.grid(True)
 plt.tight_layout()
 
-plt.show()
+# Vibration Serviceability Metrics 
+rms_unweighted = np.sqrt(np.mean(acceleration ** 2))
+rms_weighted = np.sqrt(np.mean(weighted_signal ** 2))
+print(f"Unweighted RMS: {rms_unweighted:.6f} m/s^2")
+print(f"Weighted RMS: {rms_weighted:.6f} m/s^2")
+
+# Define your window parameters
+window_duration = 1.0  # seconds
+window_size = int(fs * window_duration)  # number of samples in 1 second
+
+# Function to calculate running RMS
+def running_rms(signal, window_size):
+    return np.sqrt(np.convolve(signal**2, np.ones(window_size)/window_size, mode='valid'))
+
+# Calculate running RMS for unweighted and weighted signals
+rms_running_unweighted = running_rms(acceleration, window_size)
+rms_running_weighted = running_rms(weighted_signal, window_size)
+
+# Find the maximum RMS in those running windows
+max_rms_unweighted = np.max(rms_running_unweighted)
+max_rms_weighted = np.max(rms_running_weighted)
+
+# Print results
+print(f"MTVV 1s Running RMS (Unweighted): {max_rms_unweighted:.6f} m/s^2")
+print(f"MTVV 1s Running RMS (Weighted):   {max_rms_weighted:.6f} m/s^2")
+
+plt.show() 
