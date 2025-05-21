@@ -210,7 +210,6 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     # Display table
     print(tabulate(df_metrics.round(6), headers='keys', tablefmt='grid', numalign="center", stralign="center"))
 
-
     plt.show() 
 
 df = analyze_vibration(
@@ -223,4 +222,5 @@ df = analyze_vibration(
 )
 
 # Calling function from another file:
-# from Function_VerticalFrequecyWeighting import analyze_vibration
+# - Comment out the function call above
+# from Function_VerticalFrequencyWeighting import analyze_vibration
