@@ -214,11 +214,11 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
 
 df = analyze_vibration(
     file_path="results_500mc_trial_matrix.csv",
-    low_gain=1.0,
-    f_low=0.1,
+    low_gain=0.4,
+    f_low=0.5,
     f_mid_start=2.0,
     f_mid_end=5.0,
-    f_flat_end=100
+    f_flat_end=16.0
 )
 
 # Calling function from another file:
