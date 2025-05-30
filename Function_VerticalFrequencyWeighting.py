@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.fftpack import fft, fftfreq
-from scipy.signal import freqs
 from scipy.fft import fft, ifft
 from tabulate import tabulate
 
