@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.fft import fft, ifft, fftfreq
+from tabulate import tabulate
+
 
 def _build_weighting(positive_freqs: np.ndarray,
                      low_gain: float,
@@ -107,36 +109,69 @@ def weight_and_metrics(acceleration: np.ndarray,
         "R_unweighted": R_unw, "R_weighted": R_w
     }
 
-    if do_plots:
-        plt.figure(figsize=(8, 4.5))
-        plt.loglog(positive_freqs[positive_freqs > 0], Wpos[positive_freqs > 0])
+    if do_plots:      
+        # ----------------- Plot Frequency Weighting -----------------
+        plt.figure(figsize=(10, 5))
+        plt.loglog(positive_freqs, Wpos, label="Apply to acceleration data in units of m/s²") # Plot in m/
+        
+        # Define 1/3-octave frequency axis ticks --> Comment out if you want to see frequency position when you hover cursor over the plot
+        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5,
+                            1, 2, 4, 8, 16, 31.5, 63])
+        plt.xticks(octave_centers, [str(f) for f in octave_centers]) # Apply custom ticks and labels to x-axis
+        
         plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Weighting")
+        plt.ylabel("Frequency Weighting")
         plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
-        plt.grid(True, which="both")
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        plt.legend()
+        plt.tight_layout()
 
-        plt.figure(figsize=(8, 4.5))
-        plt.plot(t, acceleration, label="Unweighted")
-        plt.plot(t, weighted_signal, label="Weighted")
+        # ----------------- Compare Unweighted and Weighted Acceleration Time-History -----------------
+        plt.figure(figsize=(10, 5))
+        plt.plot(t, acceleration, label="Unweighted", color='blue')
+        plt.plot(t, weighted_signal, label="Weighted", color='orange')
+        plt.title("Acceleration Time-History")
         plt.xlabel("Time (s)")
         plt.ylabel("Acceleration (m/s²)")
-        plt.title("Acceleration Time-History")
         plt.legend()
         plt.grid(True)
-
+        plt.tight_layout()
+        
+        
+        # ----------------- Compare Unweighted and Weighted Spectra on the Same Plot -----------------
         magnitude_unw = np.abs(fft(acceleration)) / n
         magnitude_w = np.abs(weighted_fft) / n
-        plt.figure(figsize=(8, 4.5))
-        plt.plot(positive_freqs, magnitude_unw[:pos_count], label="Unweighted")
-        plt.plot(positive_freqs, magnitude_w[:pos_count], label="Weighted")
-        plt.xlim(0, fs/2)
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Magnitude (m/s²)")
+        plt.figure(figsize=(10, 5))
+        plt.plot(positive_freqs, magnitude_unw[:pos_count], label="Unweighted", color='blue')
+        plt.plot(positive_freqs, magnitude_w[:pos_count], label="Weighted", color='orange')
         plt.title("FFT - Frequency Spectra")
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Acceleration (m/s²)")
         plt.legend()
+        plt.xlim(0, 20)
+        plt.ylim(0, 0.031)
         plt.grid(True)
+        plt.tight_layout()
+        
+        # plt.show()
+        
+    # Make Table of Vibration Serviceability Metrics
+    metrics = {
+        "Peak (m/s^2)": [peak_unw, peak_w],
+        "RMS (m/s^2)": [rms_unw, rms_w],
+        "MTVV (m/s^2)": [mtvv_unw, mtvv_w],
+        "MTVV*sqrt(2) (m/s^2)": [mtvv_root2_unw, mtvv_root2_w],
+        "CF": [cf_unw, cf_w],
+        "VDV (m/s^1.75)": [vdv_unw, vdv_w],
+        "R": [R_unw, R_w]
+    }
+    # Create DataFrame
+    df_metrics = pd.DataFrame(metrics, index=["Unweighted", "Weighted"])
+    # Display table
+    print(tabulate(df_metrics.round(6), headers='keys', tablefmt='grid', numalign="center", stralign="center"))
 
     return metrics
+plt.show()
 
 def local_sensitivity(acceleration: np.ndarray,
                       fs: int,
@@ -189,7 +224,6 @@ def load_trial_from_csv(file_path: str, trial_index: int = 0) -> Tuple[np.ndarra
     fs = 100
     return accel_data, fs
 
-def generate_test_signal(fs: int = 100, duration: float = 60.0) -> np.ndarray:
     t = np.arange(int(fs * duration)) / fs
     sig = 0.15*np.sin(2*np.pi*2.0*t) + 0.06*np.sin(2*np.pi*4.0*t) + 0.02*np.random.randn(t.size)
     return sig
