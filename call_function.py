@@ -1,11 +1,13 @@
 from Function_VerticalFrequencyWeighting import (
     analyze_vibration,
     local_sensitivity_from_file,
-    range_sweep_percent,
-    tornado_grid_elasticity
+    tornado_grid_elasticity,
+    plot_sweep_multi_metric,  
 )
 
-# A) Show your three plots + printed table
+# ====================================================
+# A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
+# CHOOSE WEIGHTING CURVE PARAMETERS HERE
 analyze_vibration(
     file_path="results_500mc_trial_matrix.csv",
     low_gain=0.4,
@@ -15,25 +17,21 @@ analyze_vibration(
     f_flat_end=16.0
 )
 
-# B) Local derivatives & elasticities at your baseline (ALL 7 metrics)
+# ====================================================
+# B) Local derivative-based sensitivity using central finite differences & elasticities at baseline
+# CHOOSE BASELINE WEIGHTING CURVE PARAMETERS FOR SENSITIVITY ANALYSIS HERE
 base = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
 
+# Elasticity & Partial derivatives
+# CHOOSE % CHANGE IN PARAMETER FOR FINITE DIFFERENCE SENSITIVITY ANALYSIS HERE
 df_elast, df_dydp = local_sensitivity_from_file(
     file_path="results_500mc_trial_matrix.csv",
     trial_index=0,
     fs=100,
     base_params=base,
-    rel_step=0.05,
-    metrics_to_track=(
-        "Peak_weighted","RMS_weighted","MTVV_weighted",
-        "MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted"
-    )
+    rel_step=0.05 # 0.05 = 5% change in parameter
+    # metrics_to_track optional — default is all 7 weighted metrics
 )
-
-print("Elasticities (out/in):")
-print(df_elast.round(4))
-print("\nRaw partial derivatives (metric units per param unit):")
-print(df_dydp.round(6))
 
 # Rename columns for pretty labels before plotting
 pretty_map = {
@@ -57,32 +55,20 @@ tornado_grid_elasticity(
     title="Local Sensitivity (Elasticity) — All Metrics"
 )
 
+# ====================================================
 # C) Range sweep (one-at-a-time) → % change vs baseline
-param_ranges = {
-    "low_gain":   (0.2, 0.6),
-    "f_low":      (0.3, 1.0),
-    "f_mid_start":(1.5, 3.0),
-    "f_mid_end":  (4.0, 6.0),
-    "f_flat_end": (12.0, 20.0),
-}
-
-sweep = range_sweep_percent(
+# - show how metrics change when you move a parameter across a user-defined range with others fixed
+# Plot sweep to see % change in metrics as one weighting curve parameter is swept
+# CHOOSE PARAMETER, RANGE, AND METRICS TO PLOT HERE
+plot_sweep_multi_metric(
     file_path="results_500mc_trial_matrix.csv",
     trial_index=0,
     fs=100,
     base_params=base,
-    param_ranges=param_ranges,
-    samples_per_param=7,
-    metrics_to_track=(
-        "Peak_weighted","RMS_weighted","MTVV_weighted",
-        "MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted"
-    )
+    param_name="f_mid_end", # CHOOSE PARAMETER TO SWEEP FOR PLOTTING
+    param_range=(4.0, 6.0), # CHOOSE RANGE TO SWEEP FOR PLOTTING
+    samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
+    metrics=["RMS_weighted", "VDV_weighted", "R_weighted"], # CHOOSE METRICS TO PLOT
+    # metrics=None, # Default is all 7 weighted metrics
+    title="% Change in metrics w.r.t. f_mid_end",
 )
-
-# Example: plot % change for RMS_weighted vs parameter value for 'low_gain' 
-import matplotlib.pyplot as plt 
-ax = sweep["low_gain"]["RMS_weighted"].plot(marker="o") 
-ax.set_title("RMS_weighted: % change vs low_gain") 
-ax.set_xlabel("low_gain") # ax.set_ylabel("% change relative to baseline") 
-ax.grid(True) 
-plt.show()

@@ -339,9 +339,9 @@ def _load_trial_series(file_path, trial_index=0):
     accel_data = data.iloc[trial_index, 1:].values.astype(float)
     return accel_data
 
-
 # ====================================================
 # Local derivative-based sensitivity at a baseline
+# one-at-a-time (OAT) local, derivative-based sensitivity using central finite differences
 # ====================================================
 def local_sensitivity_from_file(
     file_path,
@@ -349,13 +349,14 @@ def local_sensitivity_from_file(
     fs=100,
     base_params=None,
     rel_step=0.05,
-    metrics_to_track=None  # ← default now None; we set all 7 weighted inside
+    metrics_to_track=None  # ← default None => all 7 weighted metrics
 ):
     """
     Computes one-at-a-time sensitivities at baseline using symmetric finite differences.
-    Returns two DataFrames:
-      - df_elasticity:  (%Δoutput / %Δinput)  a.k.a. 'elasticity'
-      - df_dydp:       raw partial derivative (units of metric per unit of parameter)
+    Prints tabulated Elasticity and dY/dP tables (CF & R unitless; parameters shown without units).
+    Returns:
+      - df_elasticity (programmatic columns)
+      - df_dydp       (programmatic columns)
     """
     if base_params is None:
         base_params = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
@@ -372,10 +373,28 @@ def local_sensitivity_from_file(
             "R_weighted",
         )
 
-    # load once
-    accel = _load_trial_series(file_path, trial_index=trial_index)
+    # ---- pretty metric names & units (CF, R unitless) ----
+    metric_pretty = {
+        "Peak_weighted": "Peak",
+        "RMS_weighted": "RMS",
+        "MTVV_weighted": "MTVV",
+        "MTVV_sqrt2_weighted": "MTVV*sqrt(2)",
+        "CF_weighted": "CF",
+        "VDV_weighted": "VDV",
+        "R_weighted": "R",
+    }
+    metric_units = {
+        "Peak_weighted": "m/s^2",
+        "RMS_weighted": "m/s^2",
+        "MTVV_weighted": "m/s^2",
+        "MTVV_sqrt2_weighted": "m/s^2",
+        "CF_weighted": "",          # unitless
+        "VDV_weighted": "m/s^1.75",
+        "R_weighted": "",           # unitless
+    }
 
-    # baseline metrics
+    # ---- load and baseline ----
+    accel = _load_trial_series(file_path, trial_index=trial_index)
     m0 = _metrics_no_plots(accel, fs, **base_params)
     y0 = np.array([m0[k] for k in metrics_to_track], dtype=float)
 
@@ -393,17 +412,13 @@ def local_sensitivity_from_file(
             p_down = p0
 
         # evaluate down
-        par_down = dict(base_params)
-        par_down[pname] = p_down
-        m_down = _metrics_no_plots(accel, fs, **par_down)
-        y_down = np.array([m_down[k] for k in metrics_to_track], dtype=float)
+        par_down = dict(base_params); par_down[pname] = p_down
+        y_down = np.array([_metrics_no_plots(accel, fs, **par_down)[k] for k in metrics_to_track], dtype=float)
 
         # evaluate up
         p_up = p0 + step
-        par_up = dict(base_params)
-        par_up[pname] = p_up
-        m_up = _metrics_no_plots(accel, fs, **par_up)
-        y_up = np.array([m_up[k] for k in metrics_to_track], dtype=float)
+        par_up = dict(base_params); par_up[pname] = p_up
+        y_up = np.array([_metrics_no_plots(accel, fs, **par_up)[k] for k in metrics_to_track], dtype=float)
 
         dy = y_up - y_down
         dp = (p_up - p_down) if (p_up - p_down) != 0 else step
@@ -416,76 +431,33 @@ def local_sensitivity_from_file(
         elast[~np.isfinite(elast)] = np.nan
         elast_mat[i, :] = elast
 
+    # Programmatic DataFrames (for code use)
     df_elasticity = pd.DataFrame(elast_mat, index=param_order, columns=metrics_to_track)
-    df_dydp = pd.DataFrame(dydp_mat, index=param_order, columns=metrics_to_track)
+    df_dydp       = pd.DataFrame(dydp_mat,   index=param_order, columns=metrics_to_track)
+
+    # ---------- Pretty printing ----------
+    # 1) Elasticity (dimensionless) – pretty metric names
+    df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
+    df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
+    print("\nElasticity (% change output / % change input):")
+    print(tabulate(df_elast_print, headers="keys", tablefmt="grid",
+                   numalign="center", stralign="center"))
+
+    # 2) Partial derivatives – metric units only in headers; parameters shown without units
+    col_with_units = {
+        k: f"{metric_pretty[k]}{f' ({metric_units[k]})' if metric_units[k] else ''}"
+        for k in df_dydp.columns
+    }
+    df_dydp_u = df_dydp.rename(columns=col_with_units).copy()
+    df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
+
+    df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
+    print("\nPartial derivatives dY/dP")
+    print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
+                   numalign="center", stralign="center"))
+
+    # Return programmatic frames (without prettified labels) for plotting/saving
     return df_elasticity, df_dydp
-
-# ====================================================
-# Range sweep: user-defined ranges → % change w.r.t. baseline
-# ====================================================
-def range_sweep_percent(
-    file_path,
-    trial_index=0,
-    fs=100,
-    base_params=None,
-    param_ranges=None,
-    samples_per_param=5,
-    metrics_to_track=("Peak_weighted","RMS_weighted","MTVV_weighted","MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted")
-):
-    """
-    For each parameter, sweep a user-defined range (others fixed at baseline) and
-    report % change of metrics relative to baseline.
-
-    param_ranges: dict like
-        {
-          "low_gain":   (0.2, 0.6),
-          "f_low":      (0.3, 1.0),
-          "f_mid_start":(1.5, 3.0),
-          "f_mid_end":  (4.0, 6.0),
-          "f_flat_end": (12.0, 20.0),
-        }
-    Returns: dict[param_name] -> DataFrame with rows = parameter values, cols = metrics (% change)
-    """
-    if base_params is None:
-        base_params = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
-    if param_ranges is None:
-        param_ranges = {
-            "low_gain": (0.2, 0.6),
-            "f_low": (0.3, 1.0),
-            "f_mid_start": (1.5, 3.0),
-            "f_mid_end": (4.0, 6.0),
-            "f_flat_end": (12.0, 20.0),
-        }
-
-    accel = _load_trial_series(file_path, trial_index=trial_index)
-    baseline = _metrics_no_plots(accel, fs, **base_params)
-    y0 = {k: baseline[k] for k in metrics_to_track}
-
-    results = {}
-    for pname, (lo, hi) in param_ranges.items():
-        grid = np.linspace(lo, hi, samples_per_param)
-        rows = []
-        for val in grid:
-            params = dict(base_params)
-            # guard: keep frequencies > 0
-            if pname.startswith("f_") and val <= 0.0:
-                val = max(1e-6, lo)
-            params[pname] = float(val)
-
-            m = _metrics_no_plots(accel, fs, **params)
-            row = {"param_value": val}
-            for metric in metrics_to_track:
-                if y0[metric] == 0:
-                    pct = np.nan
-                else:
-                    pct = 100.0 * (m[metric] - y0[metric]) / y0[metric]
-                row[metric] = pct
-            rows.append(row)
-
-        df_param = pd.DataFrame(rows).set_index("param_value")
-        results[pname] = df_param
-
-    return results
 
 # ====================================================
 # Tornado plots for local elasticities
@@ -578,9 +550,15 @@ def tornado_grid_elasticity(
             ax.set_xlim(-1.05 * local_max, 1.05 * local_max)
 
         if annotate:
+            # Skip NaNs and place text slightly beyond the bar
+            xmin, xmax = ax.get_xlim()
+            span = xmax - xmin
             for yi, val in enumerate(s_sorted.values):
-                xoff = 0.02 * (1 if val >= 0 else -1) * (ax.get_xlim()[1] - ax.get_xlim()[0])
+                if np.isnan(val):
+                    continue
+                xoff = 0.02 * (1 if val >= 0 else -1) * span
                 ax.text(val + xoff, yi, f"{val:.2f}", va="center")
+
 
         # x-label only on bottom row
         if r == nrows - 1:
@@ -602,3 +580,148 @@ def tornado_grid_elasticity(
         plt.savefig(save_path, dpi=200)
 
     plt.show()
+
+# ====================================================
+# Range sweep: user-defined ranges → % change w.r.t. baseline
+# Plot sweep to see how metrics change as one weighting curve parameter is swept
+# - one-at-a-time global sweep (but not derivative-based)
+# - Show how metrics change when you move a parameter across a user-defined range with others fixed
+# - 1.Set that parameter to the grid value (others at baseline). 2.Recompute metrics. 3.Report % change relative to baseline:
+# ====================================================
+def plot_sweep_multi_metric(
+    file_path,
+    trial_index=0,
+    fs=100,
+    base_params=None,
+    param_name="low_gain",
+    param_range=(0.2, 0.6),
+    samples=9,
+    metrics=None,
+    title=None,
+    show_legend=True,
+    legend_outside=True,
+):
+    """
+    Plot % change (relative to baseline) for multiple metrics as the chosen parameter is swept.
+
+    Parameters
+    ----------
+    file_path : str
+        CSV path.
+    trial_index : int
+        Which row to load (col0 label, others are samples).
+    fs : float
+        Sampling rate (Hz).
+    base_params : dict or None
+        Baseline parameters {low_gain, f_low, f_mid_start, f_mid_end, f_flat_end}.
+        Defaults to (0.4, 0.5, 2.0, 5.0, 16.0) if None.
+    param_name : str
+        Parameter to sweep: "low_gain", "f_low", "f_mid_start", "f_mid_end", or "f_flat_end".
+    param_range : (float, float)
+        Sweep range (inclusive endpoints).
+    samples : int
+        Number of points in the sweep (>= 2).
+    metrics : list[str] or None
+        Metrics to plot. Defaults to all seven weighted metrics.
+        Valid keys: "Peak_weighted","RMS_weighted","MTVV_weighted",
+                    "MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted"
+    title : str or None
+        Optional plot title. If None, a sensible default is used.
+    show_legend : bool
+        Whether to show a legend.
+    legend_outside : bool
+        If True, places legend outside the plot (top-right).
+
+    Returns
+    -------
+    df : pd.DataFrame
+        A DataFrame indexed by the swept parameter values with columns = metrics (% change vs baseline).
+    """
+    if base_params is None:
+        base_params = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
+    if param_name not in base_params:
+        raise ValueError(f"param_name '{param_name}' not in base_params: {list(base_params.keys())}")
+    if samples < 2:
+        raise ValueError("samples must be >= 2")
+
+    # Pretty names & units for legend (CF & R unitless)
+    metric_pretty = {
+        "Peak_weighted": "Peak",
+        "RMS_weighted": "RMS",
+        "MTVV_weighted": "MTVV",
+        "MTVV_sqrt2_weighted": "MTVV*sqrt(2)",
+        "CF_weighted": "CF",
+        "VDV_weighted": "VDV",
+        "R_weighted": "R",
+    }
+    metric_units = {
+        "Peak_weighted": "m/s^2",
+        "RMS_weighted": "m/s^2",
+        "MTVV_weighted": "m/s^2",
+        "MTVV_sqrt2_weighted": "m/s^2",
+        "CF_weighted": "",        # unitless
+        "VDV_weighted": "m/s^1.75",
+        "R_weighted": "",         # unitless
+    }
+    def _pretty_with_units(k):
+        u = metric_units.get(k, "")
+        return f"{metric_pretty.get(k,k)} ({u})" if u else metric_pretty.get(k,k)
+
+    # Default metrics = all 7 weighted
+    if metrics is None:
+        metrics = [
+            "Peak_weighted","RMS_weighted","MTVV_weighted",
+            "MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted"
+        ]
+
+    # Load once and compute baseline
+    accel = _load_trial_series(file_path, trial_index=trial_index)
+    baseline = _metrics_no_plots(accel, fs, **base_params)
+    y0 = {m: baseline[m] for m in metrics}
+
+    # Build sweep grid
+    lo, hi = float(param_range[0]), float(param_range[1])
+    grid = np.linspace(lo, hi, samples)
+
+    rows = []
+    for val in grid:
+        params = dict(base_params)
+        # keep frequencies > 0
+        if param_name.startswith("f_") and val <= 0.0:
+            val = max(1e-6, lo)
+        params[param_name] = float(val)
+
+        m = _metrics_no_plots(accel, fs, **params)
+        row = {"param_value": val}
+        for k in metrics:
+            base = y0[k]
+            row[k] = np.nan if base == 0 else 100.0 * (m[k] - base) / base
+        rows.append(row)
+
+    df = pd.DataFrame(rows).set_index("param_value")
+
+    # ----- Plot -----
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for k in metrics:
+        if k not in df.columns:
+            continue
+        ax.plot(df.index.values, df[k].values, marker="o", label=_pretty_with_units(k))
+
+    ax.set_xlabel(param_name)  # parameters shown without units
+    ax.set_ylabel("% change of metrics relative to baseline")
+    if title is None:
+        ax.set_title(f"% change of selected metrics vs {param_name}")
+    else:
+        ax.set_title(title)
+    ax.grid(True)
+
+    if show_legend:
+        if legend_outside:
+            fig.legend(loc="upper right", bbox_to_anchor=(0.98, 0.98))
+        else:
+            ax.legend()
+
+    plt.tight_layout(rect=(0, 0, 0.96, 0.96) if legend_outside else None)
+    plt.show()
+
+    return df
