@@ -1,23 +1,20 @@
-from vertical_weighting_sensitivity import load_trial_from_csv, local_sensitivity, weight_and_metrics
+import numpy as np
 
-# 1) Load one trial (uses fs=100 Hz by default, matching your dataset)
-accel, fs = load_trial_from_csv("results_500mc_trial_matrix.csv", trial_index=0)
+# synthetic time series around walking harmonics
+fs = 100
+t = np.arange(fs*60)/fs
+accel = 0.12*np.sin(2*np.pi*2.0*t) + 0.05*np.sin(2*np.pi*4.0*t) + 0.02*np.random.randn(t.size)
 
-# 2) Define your baseline (your current ISO2631 straight-line approx)
+# Baseline params
 base = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
 
-# 3) Generate metrics and plots
-metrics = weight_and_metrics(accel, fs=fs, **base, do_plots=True)
+# Use the internal function to bypass file I/O:
+m = _metrics_no_plots(accel, fs, **base)
+print({k: round(v, 6) for k, v in m.items() if k.endswith("_weighted")})
 
-
-# 4) Run local (±5%) derivative-based sensitivity — choose the outputs you care about
-df = local_sensitivity(
-    acceleration=accel,
-    fs=fs,
-    base_params=base,
-    rel_step=0.05,  # 5% symmetric finite-difference step
-    metrics_to_track=["Peak_weighted","RMS_weighted", "MTVV_weighted", "MTVV_sqrt2_weighted", "CF_weighted", "VDV_weighted", "R_weighted"]
+# Sensitivity over all 7
+df_elast, df_dydp = local_sensitivity_from_file(
+    file_path="results_500mc_trial_matrix.csv",  # not used in this quick test
+    trial_index=0, fs=fs, base_params=base, rel_step=0.05,
+    metrics_to_track=None  # <- all 7 weighted by default
 )
-
-print(df.round(4))
-
