@@ -154,7 +154,7 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     plt.plot(positive_freqs, weighted_magnitude_pos, label="Weighted", color='orange')
     plt.title("FFT - Frequency Spectra")
     plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Acceleration (m/s²)")
+    plt.ylabel("Amplitude (m/s²)")
     plt.legend()
     plt.xlim(0, 20)
     plt.ylim(0, 0.031)
@@ -184,7 +184,7 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     mtvv_unw = np.max(rms_running_unweighted)
     mtvv_w = np.max(rms_running_weighted)
 
-    # MTVV*sqrt(2) = Peak Acceleration
+    # MTVV*√ = Peak Acceleration
     mtvv_root2_unw = np.sqrt(2)*mtvv_unw
     mtvv_root2_w = np.sqrt(2)*mtvv_w
 
@@ -205,7 +205,7 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
         "Peak (m/s^2)": [peak_unw, peak_w],
         "RMS (m/s^2)": [rms_unw, rms_w],
         "MTVV (m/s^2)": [mtvv_unw, mtvv_w],
-        "MTVV*sqrt(2) (m/s^2)": [mtvv_root2_unw, mtvv_root2_w],
+        "MTVV*√2 (m/s^2)": [mtvv_root2_unw, mtvv_root2_w],
         "CF": [cf_unw, cf_w],
         "VDV (m/s^1.75)": [vdv_unw, vdv_w],
         "R": [R_unw, R_w]
@@ -343,6 +343,8 @@ def _load_trial_series(file_path, trial_index=0):
 # ====================================================
 # Local derivative-based sensitivity at a baseline
 # one-at-a-time (OAT) local, derivative-based sensitivity using central finite differences
+# Partial derivatives tell us the absolute sensitivity of a metric w.r.t. a parameter --> Has units (metric units/parameter units)
+# Elasticity scales the partial derivative into a dimensionless measure --> percentage change in the output per percentage change in the input.
 # ====================================================
 def local_sensitivity_from_file(
     file_path,
@@ -379,7 +381,7 @@ def local_sensitivity_from_file(
         "Peak_weighted": "Peak",
         "RMS_weighted": "RMS",
         "MTVV_weighted": "MTVV",
-        "MTVV_sqrt2_weighted": "MTVV*sqrt(2)",
+        "MTVV_sqrt2_weighted": "MTVV*√2",
         "CF_weighted": "CF",
         "VDV_weighted": "VDV",
         "R_weighted": "R",
@@ -440,7 +442,7 @@ def local_sensitivity_from_file(
     # 1) Elasticity (dimensionless) – pretty metric names
     df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
     df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
-    print("\nElasticity (% change output / % change input):")
+    print("\nElasticity (%Δoutput / %Δinput) when curve parameter is perturbed by ±" + str(rel_step)  +  ":")
     print(tabulate(df_elast_print, headers="keys", tablefmt="grid",
                    numalign="center", stralign="center"))
 
@@ -453,7 +455,7 @@ def local_sensitivity_from_file(
     df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
 
     df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
-    print("\nPartial derivatives ∂(Metric)/∂(Parameter)")
+    print("\nPartial derivatives (∂M/∂P) when curve parameter is perturbed by ±" + str(rel_step)  +  ":")
     print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
                    numalign="center", stralign="center"))
 
@@ -476,11 +478,54 @@ def tornado_grid_elasticity(
 ):
     """
     Render all tornado charts (elasticity) as subplots in a single figure.
+    Accepts DataFrames with either raw metric keys (*_weighted) or pretty keys,
+    and always displays pretty titles.
     """
+
+    # --- mapping between programmatic and pretty ---
+    metric_pretty = {
+        "Peak_weighted": "Peak",
+        "RMS_weighted": "RMS",
+        "MTVV_weighted": "MTVV",
+        "MTVV_sqrt2_weighted": "MTVV*√2",
+        "CF_weighted": "CF",
+        "VDV_weighted": "VDV",
+        "R_weighted": "R",
+    }
+    pretty_to_raw = {v: k for k, v in metric_pretty.items()}
+
+    # Helper: given a requested name, find the column key and display name
+    def resolve_metric(name):
+        # If the exact name is in the DF, use it; choose display accordingly
+        if name in df_elasticity.columns:
+            # If it's a raw key, map to pretty for display; else keep as is
+            disp = metric_pretty.get(name, name)
+            return name, disp
+        # If a pretty name was passed, see if its raw exists
+        if name in pretty_to_raw and pretty_to_raw[name] in df_elasticity.columns:
+            return pretty_to_raw[name], name
+        # Last chance: try common alias for sqrt2 variations
+        aliases = {
+            "MTVV*sqrt(2)": "MTVV_sqrt2_weighted",
+            "MTVV_sqrt2": "MTVV_sqrt2_weighted",
+            "MTVV×√2": "MTVV_sqrt2_weighted",
+        }
+        if name in aliases and aliases[name] in df_elasticity.columns:
+            return aliases[name], metric_pretty.get(aliases[name], name)
+        raise KeyError(f"Metric '{name}' not found in df_elasticity columns {list(df_elasticity.columns)}")
+
+    # If no list provided, use whatever is in the DF, but derive pretty display names
     if metrics_to_plot is None:
         metrics_to_plot = list(df_elasticity.columns)
 
-    nplots = len(metrics_to_plot)
+    # Build the list of (col_key, display_name) in requested order
+    resolved = []
+    for m in metrics_to_plot:
+        col_key, disp = resolve_metric(m)
+        resolved.append((col_key, disp))
+
+    # Layout
+    nplots = len(resolved)
     nrows = math.ceil(nplots / ncols)
     fig_w = figsize_per[0] * ncols
     fig_h = figsize_per[1] * nrows
@@ -492,24 +537,24 @@ def tornado_grid_elasticity(
     elif ncols == 1:
         axes = axes.reshape(-1, 1)
 
-    # Determine a common x-limit if sharex, based on all metrics
+    # Common x-limits if requested
     if sharex:
         all_vals = []
-        for metric in metrics_to_plot:
-            s = df_elasticity[metric].dropna()
+        for col_key, _disp in resolved:
+            s = df_elasticity[col_key].dropna()
             all_vals.extend(s.values.tolist())
         xabs = np.nanmax(np.abs(all_vals)) if len(all_vals) else 1.0
         xlim = (-1.05 * xabs, 1.05 * xabs)
     else:
         xlim = None
 
-    # Draw each metric
-    for idx, metric in enumerate(metrics_to_plot):
+    # Draw each subplot
+    for idx, (col_key, disp) in enumerate(resolved):
         r = idx // ncols
         c = idx % ncols
         ax = axes[r, c]
 
-        s = df_elasticity[metric].copy()
+        s = df_elasticity[col_key].copy()
         order = np.argsort(np.abs(s.values))[::-1]
         s_sorted = s.iloc[order]
 
@@ -519,7 +564,7 @@ def tornado_grid_elasticity(
         ax.set_yticklabels(s_sorted.index)
         ax.axvline(0.0, linewidth=1.0)
         ax.grid(True, axis="x", linestyle="--", linewidth=0.5)
-        ax.set_title(metric)
+        ax.set_title(disp)  # ← pretty title
 
         if sharex:
             ax.set_xlim(*xlim)
@@ -536,7 +581,7 @@ def tornado_grid_elasticity(
                 xoff = 0.02 * (1 if val >= 0 else -1) * span
                 ax.text(val + xoff, yi, f"{val:.2f}", va="center")
 
-        # ←—— set x-label on EVERY subplot
+        # x-label on EVERY subplot
         ax.set_xlabel("Elasticity  (%Δout / %Δin)")
 
     # Hide any extra axes (when grid > number of plots)
@@ -546,13 +591,10 @@ def tornado_grid_elasticity(
         axes[r, c].axis("off")
 
     fig.suptitle(title, y=0.995)
-
     if tight_layout:
-        plt.tight_layout(rect=(0, 0, 1, 0.97))  # leave room for suptitle
-
+        plt.tight_layout(rect=(0, 0, 1, 0.97))
     if save_path:
         plt.savefig(save_path, dpi=200)
-
     plt.show()
 
 # ====================================================
@@ -577,40 +619,9 @@ def plot_sweep_multi_metric(
 ):
     """
     Plot % change (relative to baseline) for multiple metrics as the chosen parameter is swept.
-
-    Parameters
-    ----------
-    file_path : str
-        CSV path.
-    trial_index : int
-        Which row to load (col0 label, others are samples).
-    fs : float
-        Sampling rate (Hz).
-    base_params : dict or None
-        Baseline parameters {low_gain, f_low, f_mid_start, f_mid_end, f_flat_end}.
-        Defaults to (0.4, 0.5, 2.0, 5.0, 16.0) if None.
-    param_name : str
-        Parameter to sweep: "low_gain", "f_low", "f_mid_start", "f_mid_end", or "f_flat_end".
-    param_range : (float, float)
-        Sweep range (inclusive endpoints).
-    samples : int
-        Number of points in the sweep (>= 2).
-    metrics : list[str] or None
-        Metrics to plot. Defaults to all seven weighted metrics.
-        Valid keys: "Peak_weighted","RMS_weighted","MTVV_weighted",
-                    "MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted"
-    title : str or None
-        Optional plot title. If None, a sensible default is used.
-    show_legend : bool
-        Whether to show a legend.
-    legend_outside : bool
-        If True, places legend outside the plot (top-right).
-
-    Returns
-    -------
-    df : pd.DataFrame
-        A DataFrame indexed by the swept parameter values with columns = metrics (% change vs baseline).
+    Accepts 'metrics' as raw keys or pretty names (or a mix).
     """
+
     if base_params is None:
         base_params = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
     if param_name not in base_params:
@@ -618,16 +629,18 @@ def plot_sweep_multi_metric(
     if samples < 2:
         raise ValueError("samples must be >= 2")
 
-    # Pretty names & units for legend (CF & R unitless)
+    # --- mapping between programmatic and pretty ---
     metric_pretty = {
         "Peak_weighted": "Peak",
         "RMS_weighted": "RMS",
         "MTVV_weighted": "MTVV",
-        "MTVV_sqrt2_weighted": "MTVV*sqrt(2)",
+        "MTVV_sqrt2_weighted": "MTVV*√2",
         "CF_weighted": "CF",
         "VDV_weighted": "VDV",
         "R_weighted": "R",
     }
+    pretty_to_raw = {v: k for k, v in metric_pretty.items()}
+
     metric_units = {
         "Peak_weighted": "m/s^2",
         "RMS_weighted": "m/s^2",
@@ -637,21 +650,51 @@ def plot_sweep_multi_metric(
         "VDV_weighted": "m/s^1.75",
         "R_weighted": "",         # unitless
     }
-    def _pretty_with_units(k):
-        u = metric_units.get(k, "")
-        return f"{metric_pretty.get(k,k)} ({u})" if u else metric_pretty.get(k,k)
 
-    # Default metrics = all 7 weighted
+    # Accept a few common aliases for the sqrt(2) metric name
+    alias_to_raw = {
+        "MTVV*sqrt(2)": "MTVV_sqrt2_weighted",
+        "MTVV_sqrt2": "MTVV_sqrt2_weighted",
+        "MTVV×√2": "MTVV_sqrt2_weighted",
+    }
+
+    def resolve_to_raw(name: str) -> str:
+        """Return the internal raw metric key for any given name/alias."""
+        if name in metric_pretty:              # already a raw key
+            return name
+        if name in pretty_to_raw:              # pretty → raw
+            return pretty_to_raw[name]
+        if name in alias_to_raw:               # alias → raw
+            return alias_to_raw[name]
+        # As a last resort, accept exact string if user passed another valid raw key
+        return name
+
+    def pretty_with_units(raw_key: str) -> str:
+        u = metric_units.get(raw_key, "")
+        base = metric_pretty.get(raw_key, raw_key)
+        return f"{base} ({u})" if u else base
+
+    # Default metrics = all 7 weighted (raw keys)
     if metrics is None:
-        metrics = [
+        metrics_raw = [
             "Peak_weighted","RMS_weighted","MTVV_weighted",
             "MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted"
         ]
+    else:
+        # Normalize any mix of pretty/raw/aliases → raw keys
+        metrics_raw = [resolve_to_raw(m) for m in metrics]
 
     # Load once and compute baseline
     accel = _load_trial_series(file_path, trial_index=trial_index)
     baseline = _metrics_no_plots(accel, fs, **base_params)
-    y0 = {m: baseline[m] for m in metrics}
+
+    # Make sure all requested raw metrics exist in baseline
+    missing = [m for m in metrics_raw if m not in baseline]
+    if missing:
+        raise KeyError(f"Requested metrics not found: {missing}. "
+                       f"Valid keys include: {list(baseline.keys())}")
+
+    y0 = {m: baseline[m] for m in metrics_raw}
 
     # Build sweep grid
     lo, hi = float(param_range[0]), float(param_range[1])
@@ -667,19 +710,20 @@ def plot_sweep_multi_metric(
 
         m = _metrics_no_plots(accel, fs, **params)
         row = {"param_value": val}
-        for k in metrics:
-            base = y0[k]
-            row[k] = np.nan if base == 0 else 100.0 * (m[k] - base) / base
+        for k in metrics_raw:
+            base_val = y0[k]
+            row[k] = np.nan if base_val == 0 else 100.0 * (m[k] - base_val) / base_val
         rows.append(row)
 
+    # DataFrame columns will be raw keys; index = swept parameter values
     df = pd.DataFrame(rows).set_index("param_value")
 
     # ----- Plot -----
     fig, ax = plt.subplots(figsize=(10, 5))
-    for k in metrics:
-        if k not in df.columns:
+    for raw_key in metrics_raw:
+        if raw_key not in df.columns:
             continue
-        ax.plot(df.index.values, df[k].values, marker="o", label=_pretty_with_units(k))
+        ax.plot(df.index.values, df[raw_key].values, marker="o", label=pretty_with_units(raw_key))
 
     ax.set_xlabel(param_name)  # parameters shown without units
     ax.set_ylabel("% change of metrics relative to baseline")

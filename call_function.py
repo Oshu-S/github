@@ -31,30 +31,18 @@ df_elast, df_dydp = local_sensitivity_from_file(
     trial_index=0,
     fs=100,
     base_params=base,
-    rel_step=0.05 # 0.05 = 5% change in parameter
+    rel_step=0.05 # ±0.05 = ±5% change in parameter
     # metrics_to_track optional — default is all 7 weighted metrics
 )
 
-# Rename columns for pretty labels before plotting
-pretty_map = {
-    "Peak_weighted": "Peak",
-    "RMS_weighted": "RMS",
-    "MTVV_weighted": "MTVV",
-    "MTVV_sqrt2_weighted": "MTVV*sqrt(2)",
-    "CF_weighted": "CF",
-    "VDV_weighted": "VDV",
-    "R_weighted": "R",
-}
-df_elast_pretty = df_elast.rename(columns=pretty_map)
-
 # Tornado grid (one figure with subplots)
 tornado_grid_elasticity(
-    df_elasticity=df_elast_pretty,
-    metrics_to_plot=["Peak","RMS","MTVV","MTVV*sqrt(2)","CF","VDV","R"],
+    df_elasticity=df_elast,
+    metrics_to_plot=None , # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
     ncols=3,
     sharex=True,
     annotate=True,
-    title="Local Sensitivity (Elasticity) — All Metrics"
+    title="Local Sensitivity (Elasticity) — All Vibration Metrics"
 )
 
 # ====================================================
@@ -67,10 +55,10 @@ plot_sweep_multi_metric(
     trial_index=0,
     fs=100,
     base_params=base,
-    param_name="low_gain", # CHOOSE PARAMETER TO SWEEP FOR PLOTTING
-    param_range=(0.1, 0.4), # CHOOSE RANGE TO SWEEP FOR PLOTTING
+    param_name="low_gain", # CHOOSE PARAMETER TO SWEEP
+    param_range=(0.1, 0.4), # CHOOSE RANGE TO SWEEP (Units: Amplitude (m/s²) or Hz)
     samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
-    metrics=None,#["RMS_weighted", "VDV_weighted", "R_weighted"], # CHOOSE METRICS TO PLOT
-    # metrics=None, # Default is all 7 weighted metrics
+    # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
+    metrics=None, # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
     title="% Change in metrics w.r.t. low_gain",
 )
