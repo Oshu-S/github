@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -452,7 +453,7 @@ def local_sensitivity_from_file(
     df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
 
     df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
-    print("\nPartial derivatives dY/dP")
+    print("\nPartial derivatives ∂(Metric)/∂(Parameter)")
     print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
                    numalign="center", stralign="center"))
 
@@ -475,27 +476,6 @@ def tornado_grid_elasticity(
 ):
     """
     Render all tornado charts (elasticity) as subplots in a single figure.
-
-    Parameters
-    ----------
-    df_elasticity : pd.DataFrame
-        Rows = parameters, Columns = metrics; entries = elasticity (%Δout / %Δin).
-    metrics_to_plot : list[str] or None
-        Which columns to plot. Default = all columns in df.
-    ncols : int
-        Number of subplot columns.
-    sharex : bool
-        If True, all subplots share the same x-axis limits.
-    annotate : bool
-        If True, writes numeric elasticity on the bar ends.
-    figsize_per : (w, h)
-        Size per subplot; final figure size scales by number of subplots.
-    title : str
-        Overall figure title.
-    tight_layout : bool
-        Apply tight_layout at the end.
-    save_path : str or None
-        If provided, saves the whole figure to this path (e.g., "figs/tornado_grid.png").
     """
     if metrics_to_plot is None:
         metrics_to_plot = list(df_elasticity.columns)
@@ -519,7 +499,6 @@ def tornado_grid_elasticity(
             s = df_elasticity[metric].dropna()
             all_vals.extend(s.values.tolist())
         xabs = np.nanmax(np.abs(all_vals)) if len(all_vals) else 1.0
-        # Pad a little for labels
         xlim = (-1.05 * xabs, 1.05 * xabs)
     else:
         xlim = None
@@ -545,12 +524,10 @@ def tornado_grid_elasticity(
         if sharex:
             ax.set_xlim(*xlim)
         else:
-            # individual padding
             local_max = np.nanmax(np.abs(s_sorted.values)) if len(s_sorted) else 1.0
             ax.set_xlim(-1.05 * local_max, 1.05 * local_max)
 
         if annotate:
-            # Skip NaNs and place text slightly beyond the bar
             xmin, xmax = ax.get_xlim()
             span = xmax - xmin
             for yi, val in enumerate(s_sorted.values):
@@ -559,18 +536,15 @@ def tornado_grid_elasticity(
                 xoff = 0.02 * (1 if val >= 0 else -1) * span
                 ax.text(val + xoff, yi, f"{val:.2f}", va="center")
 
+        # ←—— set x-label on EVERY subplot
+        ax.set_xlabel("Elasticity  (%Δout / %Δin)")
 
-        # x-label only on bottom row
-        if r == nrows - 1:
-            ax.set_xlabel("Elasticity  (%Δoutput / %Δinput)")
-
-    # If there are extra axes (when nrows*ncols > nplots), hide them
+    # Hide any extra axes (when grid > number of plots)
     for extra in range(nplots, nrows * ncols):
         r = extra // ncols
         c = extra % ncols
         axes[r, c].axis("off")
 
-    # Overall title
     fig.suptitle(title, y=0.995)
 
     if tight_layout:

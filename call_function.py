@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from Function_VerticalFrequencyWeighting import (
     analyze_vibration,
     local_sensitivity_from_file,
@@ -65,10 +67,10 @@ plot_sweep_multi_metric(
     trial_index=0,
     fs=100,
     base_params=base,
-    param_name="f_mid_end", # CHOOSE PARAMETER TO SWEEP FOR PLOTTING
-    param_range=(4.0, 6.0), # CHOOSE RANGE TO SWEEP FOR PLOTTING
+    param_name="low_gain", # CHOOSE PARAMETER TO SWEEP FOR PLOTTING
+    param_range=(0.1, 0.4), # CHOOSE RANGE TO SWEEP FOR PLOTTING
     samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
-    metrics=["RMS_weighted", "VDV_weighted", "R_weighted"], # CHOOSE METRICS TO PLOT
+    metrics=None,#["RMS_weighted", "VDV_weighted", "R_weighted"], # CHOOSE METRICS TO PLOT
     # metrics=None, # Default is all 7 weighted metrics
-    title="% Change in metrics w.r.t. f_mid_end",
+    title="% Change in metrics w.r.t. low_gain",
 )
