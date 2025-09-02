@@ -443,7 +443,7 @@ def local_sensitivity_from_file(
     # 1) Elasticity (dimensionless) – pretty metric names
     df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
     df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
-    print("\nElasticity (%Δoutput / %Δinput) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
+    print("\nElasticity (%ΔMetric / %ΔParameter) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
     print(tabulate(df_elast_print, headers="keys", tablefmt="grid",
                    numalign="center", stralign="center"))
 
@@ -583,7 +583,7 @@ def tornado_grid_elasticity(
                 xoff = 0.02 * (1 if val >= 0 else -1) * span
                 ax.text(val + xoff, yi, f"{val:.2f}", va="center")
 
-        ax.set_xlabel("Elasticity  (%Δout / %Δin)")
+        ax.set_xlabel("Elasticity (%ΔMetric / %ΔParameter)")
 
 
     # Hide any extra axes (when grid > number of plots)

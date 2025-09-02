@@ -11,7 +11,7 @@ from Function_VerticalFrequencyWeighting import (
 # CHOOSE WEIGHTING CURVE PARAMETERS HERE
 analyze_vibration(
     file_path="results_500mc_trial_matrix.csv",
-    low_gain=0.4,
+    low_gain=0.40,
     f_low=0.5,
     f_mid_start=2.0,
     f_mid_end=5.0,
@@ -24,7 +24,7 @@ analyze_vibration(
 base = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
 
 # Elasticity & Partial derivatives
-# CHOOSE % CHANGE IN PARAMETER FOR FINITE DIFFERENCE SENSITIVITY ANALYSIS HERE
+# CHOOSE % CHANGE IN PARAMETER FOR ELASTICITIES HERE
 df_elast, df_dydp = local_sensitivity_from_file(
     file_path="results_500mc_trial_matrix.csv",
     trial_index=0,
@@ -35,13 +35,14 @@ df_elast, df_dydp = local_sensitivity_from_file(
 )
 
 # Tornado grid (one figure with subplots)
+rel_step=0.05 # CHOOSE % CHANGE IN PARAMETER FOR ELASTICITIES HERE (should match above, just for title purposes)
 tornado_grid_elasticity(
     df_elasticity=df_elast,
-    metrics_to_plot=None , # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
+    metrics_to_plot=None, # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
     ncols=3,
     sharex=True,
     annotate=True,
-    title="Local Sensitivity (Elasticity) — All Vibration Metrics"
+    title="Local Sensitivity (Elasticity) - When %ΔParameter = ±" + str(rel_step*100)  +  "%"
 )
 
 # ====================================================
@@ -61,3 +62,4 @@ plot_sweep_multi_metric(
     metrics=["Peak", "RMS"], # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
     title="% Change in metrics w.r.t. low_gain",
 )
+
