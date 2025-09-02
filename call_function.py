@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 from Function_VerticalFrequencyWeighting import (
     analyze_vibration,
@@ -56,9 +55,9 @@ plot_sweep_multi_metric(
     fs=100,
     base_params=base,
     param_name="low_gain", # CHOOSE PARAMETER TO SWEEP
-    param_range=(0.1, 0.4), # CHOOSE RANGE TO SWEEP (Units: Amplitude (m/s²) or Hz)
+    param_range=(0.1, 1.0), # CHOOSE RANGE TO SWEEP (Units: Amplitude (m/s²) or Hz)
     samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
     # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
-    metrics=None, # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
+    metrics=["Peak", "RMS"], # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
     title="% Change in metrics w.r.t. low_gain",
 )

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -344,7 +343,9 @@ def _load_trial_series(file_path, trial_index=0):
 # Local derivative-based sensitivity at a baseline
 # one-at-a-time (OAT) local, derivative-based sensitivity using central finite differences
 # Partial derivatives tell us the absolute sensitivity of a metric w.r.t. a parameter --> Has units (metric units/parameter units)
-# Elasticity scales the partial derivative into a dimensionless measure --> percentage change in the output per percentage change in the input.
+# Elasticity scales the partial derivative into a dimensionless measure 
+#   --> percentage change in the output per percentage change in the input.
+#   --> Dimensionless ratio
 # ====================================================
 def local_sensitivity_from_file(
     file_path,
@@ -442,7 +443,7 @@ def local_sensitivity_from_file(
     # 1) Elasticity (dimensionless) – pretty metric names
     df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
     df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
-    print("\nElasticity (%Δoutput / %Δinput) when curve parameter is perturbed by ±" + str(rel_step)  +  ":")
+    print("\nElasticity (%Δoutput / %Δinput) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
     print(tabulate(df_elast_print, headers="keys", tablefmt="grid",
                    numalign="center", stralign="center"))
 
@@ -455,7 +456,7 @@ def local_sensitivity_from_file(
     df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
 
     df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
-    print("\nPartial derivatives (∂M/∂P) when curve parameter is perturbed by ±" + str(rel_step)  +  ":")
+    print("\nPartial derivatives (∂M/∂P) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
     print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
                    numalign="center", stralign="center"))
 
@@ -548,41 +549,42 @@ def tornado_grid_elasticity(
     else:
         xlim = None
 
+    desired_param_order = ["low_gain", "f_low", "f_mid_start", "f_mid_end", "f_flat_end"]
+
     # Draw each subplot
     for idx, (col_key, disp) in enumerate(resolved):
         r = idx // ncols
         c = idx % ncols
         ax = axes[r, c]
 
-        s = df_elasticity[col_key].copy()
-        order = np.argsort(np.abs(s.values))[::-1]
-        s_sorted = s.iloc[order]
+        # Reindex to a common order (no sorting by magnitude)
+        s = df_elasticity[col_key].reindex(desired_param_order)
 
-        y = np.arange(len(s_sorted))
-        ax.barh(y, s_sorted.values)
+        y = np.arange(len(desired_param_order))
+        ax.barh(y, s.values)
         ax.set_yticks(y)
-        ax.set_yticklabels(s_sorted.index)
+        ax.set_yticklabels(desired_param_order)  # bottom→top in this order
         ax.axvline(0.0, linewidth=1.0)
         ax.grid(True, axis="x", linestyle="--", linewidth=0.5)
-        ax.set_title(disp)  # ← pretty title
+        ax.set_title(disp)  # pretty title
 
         if sharex:
             ax.set_xlim(*xlim)
         else:
-            local_max = np.nanmax(np.abs(s_sorted.values)) if len(s_sorted) else 1.0
+            local_max = np.nanmax(np.abs(s.values)) if len(s) else 1.0
             ax.set_xlim(-1.05 * local_max, 1.05 * local_max)
 
         if annotate:
             xmin, xmax = ax.get_xlim()
             span = xmax - xmin
-            for yi, val in enumerate(s_sorted.values):
+            for yi, val in enumerate(s.values):
                 if np.isnan(val):
                     continue
                 xoff = 0.02 * (1 if val >= 0 else -1) * span
                 ax.text(val + xoff, yi, f"{val:.2f}", va="center")
 
-        # x-label on EVERY subplot
         ax.set_xlabel("Elasticity  (%Δout / %Δin)")
+
 
     # Hide any extra axes (when grid > number of plots)
     for extra in range(nplots, nrows * ncols):
