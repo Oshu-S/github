@@ -39,7 +39,7 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     # represents the sampling rate in Hertz. This means that the data is being sampled at a rate of
     # 100 samples per second, with a time step of 0.01 seconds between each sample.
     accel_mean = np.mean(accel_data)
-    acceleration =  accel_data - accel_mean  # Remove mean to center (spike) around zero
+    acceleration =  accel_data - accel_mean  # Remove mean --> Centre time-history around zero + Remove 0 Hz spike in FFT
 
     # 1. Setup time and sampling
     dt = 1 / fs
@@ -215,7 +215,7 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     print(tabulate(df_metrics.round(6), headers='keys', tablefmt='grid', numalign="center", stralign="center"))
     
     plt.show()
-    return df_metrics   
+    return t, weighted_signal
 
 # df = analyze_vibration(
 #     file_path="results_500mc_trial_matrix.csv",

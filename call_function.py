@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 
 from Function_VerticalFrequencyWeighting import (
     analyze_vibration,
@@ -5,11 +6,10 @@ from Function_VerticalFrequencyWeighting import (
     tornado_grid_elasticity,
     plot_sweep_multi_metric,  
 )
-
 # ====================================================
 # A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
 # CHOOSE WEIGHTING CURVE PARAMETERS HERE
-analyze_vibration(
+[t, hist_w_base] = analyze_vibration(
     file_path="results_500mc_trial_matrix.csv",
     low_gain=0.40,
     f_low=0.5,
@@ -17,6 +17,20 @@ analyze_vibration(
     f_mid_end=5.0,
     f_flat_end=16.0
 )
+
+[t, hist_w_pert] = analyze_vibration(
+    file_path="results_500mc_trial_matrix.csv",
+    low_gain=0.4,
+    f_low=0.5,
+    f_mid_start=2.0,
+    f_mid_end=5.0,
+    f_flat_end=7.0
+)
+
+plt.plot(t, hist_w_base, label='Weighted Signal (Base)')
+plt.plot(t, hist_w_pert, label='Weighted Signal (Perturbed)')
+plt.legend()
+plt.show()
 
 # ====================================================
 # B) Local derivative-based sensitivity using central finite differences & elasticities at baseline
@@ -59,7 +73,6 @@ plot_sweep_multi_metric(
     param_range=(0.1, 1.0), # CHOOSE RANGE TO SWEEP (Units: Amplitude (m/s²) or Hz)
     samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
     # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
-    metrics=["Peak", "RMS"], # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
+    metrics=["RMS"], # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
     title="% Change in metrics w.r.t. low_gain",
 )
-
