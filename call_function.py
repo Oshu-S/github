@@ -18,19 +18,19 @@ from Function_VerticalFrequencyWeighting import (
     f_flat_end=16.0
 )
 
-[t, hist_w_pert] = analyze_vibration(
-    file_path="results_500mc_trial_matrix.csv",
-    low_gain=0.4,
-    f_low=0.5,
-    f_mid_start=2.0,
-    f_mid_end=5.0,
-    f_flat_end=7.0
-)
+# [t, hist_w_pert] = analyze_vibration(
+#     file_path="results_500mc_trial_matrix.csv",
+#     low_gain=0.4,
+#     f_low=0.5,
+#     f_mid_start=2.0,
+#     f_mid_end=5.0,
+#     f_flat_end=7.0
+# )
 
-plt.plot(t, hist_w_base, label='Weighted Signal (Base)')
-plt.plot(t, hist_w_pert, label='Weighted Signal (Perturbed)')
-plt.legend()
-plt.show()
+# plt.plot(t, hist_w_base, label='Weighted Signal (Base)')
+# plt.plot(t, hist_w_pert, label='Weighted Signal (Perturbed)')
+# plt.legend()
+# plt.show()
 
 # ====================================================
 # B) Local derivative-based sensitivity using central finite differences & elasticities at baseline
@@ -70,9 +70,35 @@ plot_sweep_multi_metric(
     fs=100,
     base_params=base,
     param_name="low_gain", # CHOOSE PARAMETER TO SWEEP
-    param_range=(0.1, 1.0), # CHOOSE RANGE TO SWEEP (Units: Amplitude (m/s²) or Hz)
+    param_range=(0.1, 1.0), # CHOOSE RANGE TO SWEEP (Units: Magnitude (m/s²) or Hz)
     samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
     # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
-    metrics=["RMS"], # ["Peak","RMS","MTVV","MTVV*√2","CF","VDV","R"],
-    title="% Change in metrics w.r.t. low_gain",
+    metrics=["RMS acceleration"], # ["Peak acceleration","RMS acceleration","MTVV","MTVV*√2","CF","VDV","R"],
+    show_legend=False,
+
+)
+
+# Checking linearity of f_mid_start
+for h in [1.9,2.0,2.1]:
+    df_E, _ = local_sensitivity_from_file(
+        file_path="results_500mc_trial_matrix.csv",
+        base_params=base,
+        rel_step=h,
+        metrics_to_track=("RMS_weighted",),
+        print_elast=False,
+        print_dydp=False,
+    )
+    print("f_mid_start=" + str(h) + "Hz; E(RMS/f_mid_start)=" + str(float(df_E.loc["f_mid_start", "RMS_weighted"])))
+    
+plot_sweep_multi_metric(
+    file_path="results_500mc_trial_matrix.csv",
+    trial_index=0,
+    fs=100,
+    base_params=base,
+    param_name="f_mid_start", # CHOOSE PARAMETER TO SWEEP
+    param_range=(1.9, 2.1), # CHOOSE RANGE TO SWEEP (Units: Magnitude (m/s²) or Hz)
+    samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
+    # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
+    metrics=["RMS acceleration"], # ["Peak acceleration","RMS acceleration","MTVV","MTVV*√2","CF","VDV","R"],
+    show_legend=False,
 )

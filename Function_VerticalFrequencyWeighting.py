@@ -353,7 +353,9 @@ def local_sensitivity_from_file(
     fs=100,
     base_params=None,
     rel_step=0.05,
-    metrics_to_track=None  # ← default None => all 7 weighted metrics
+    metrics_to_track=None, # ← default None => all 7 weighted metrics
+    print_elast=None,
+    print_dydp=None,
 ):
     """
     Computes one-at-a-time sensitivities at baseline using symmetric finite differences.
@@ -441,24 +443,25 @@ def local_sensitivity_from_file(
 
     # ---------- Pretty printing ----------
     # 1) Elasticity (dimensionless) – pretty metric names
-    df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
-    df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
-    print("\nElasticity (%ΔMetric / %ΔParameter) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
-    print(tabulate(df_elast_print, headers="keys", tablefmt="grid",
-                   numalign="center", stralign="center"))
+    if print_elast is None:
+        df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
+        df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
+        print("\nElasticity (%ΔMetric / %ΔParameter) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
+        print(tabulate(df_elast_print, headers="keys", tablefmt="grid", numalign="center", stralign="center"))
 
     # 2) Partial derivatives – metric units only in headers; parameters shown without units
-    col_with_units = {
-        k: f"{metric_pretty[k]}{f' ({metric_units[k]})' if metric_units[k] else ''}"
-        for k in df_dydp.columns
-    }
-    df_dydp_u = df_dydp.rename(columns=col_with_units).copy()
-    df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
+    if print_dydp is None:
+        col_with_units = {
+            k: f"{metric_pretty[k]}{f' ({metric_units[k]})' if metric_units[k] else ''}"
+            for k in df_dydp.columns
+        }
+        df_dydp_u = df_dydp.rename(columns=col_with_units).copy()
+        df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
 
-    df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
-    print("\nPartial derivatives (∂M/∂P) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
-    print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
-                   numalign="center", stralign="center"))
+        df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
+        print("\nPartial derivatives (∂M/∂P) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
+        print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
+                    numalign="center", stralign="center"))
 
     # Return programmatic frames (without prettified labels) for plotting/saving
     return df_elasticity, df_dydp
@@ -633,8 +636,8 @@ def plot_sweep_multi_metric(
 
     # --- mapping between programmatic and pretty ---
     metric_pretty = {
-        "Peak_weighted": "Peak",
-        "RMS_weighted": "RMS",
+        "Peak_weighted": "Peak acceleration",
+        "RMS_weighted": "RMS acceleration",
         "MTVV_weighted": "MTVV",
         "MTVV_sqrt2_weighted": "MTVV*√2",
         "CF_weighted": "CF",
@@ -643,14 +646,13 @@ def plot_sweep_multi_metric(
     }
     pretty_to_raw = {v: k for k, v in metric_pretty.items()}
 
-    metric_units = {
-        "Peak_weighted": "m/s^2",
-        "RMS_weighted": "m/s^2",
-        "MTVV_weighted": "m/s^2",
-        "MTVV_sqrt2_weighted": "m/s^2",
-        "CF_weighted": "",        # unitless
-        "VDV_weighted": "m/s^1.75",
-        "R_weighted": "",         # unitless
+    # Parameter pretty labels (with units where relevant)
+    param_pretty = {
+        "low_gain": "low_gain (dB)",
+        "f_low": "f_low (Hz)",
+        "f_mid_start": "f_mid_start (Hz)",
+        "f_mid_end": "f_mid_end (Hz)",
+        "f_flat_end": "f_flat_end (Hz)",
     }
 
     # Accept a few common aliases for the sqrt(2) metric name
@@ -671,19 +673,13 @@ def plot_sweep_multi_metric(
         # As a last resort, accept exact string if user passed another valid raw key
         return name
 
-    def pretty_with_units(raw_key: str) -> str:
-        u = metric_units.get(raw_key, "")
-        base = metric_pretty.get(raw_key, raw_key)
-        return f"{base} ({u})" if u else base
+    def pretty_metric(raw_key: str) -> str:
+        return metric_pretty.get(raw_key, raw_key)
 
     # Default metrics = all 7 weighted (raw keys)
     if metrics is None:
-        metrics_raw = [
-            "Peak_weighted","RMS_weighted","MTVV_weighted",
-            "MTVV_sqrt2_weighted","CF_weighted","VDV_weighted","R_weighted"
-        ]
+        metrics_raw = list(metric_pretty.keys())
     else:
-        # Normalize any mix of pretty/raw/aliases → raw keys
         metrics_raw = [resolve_to_raw(m) for m in metrics]
 
     # Load once and compute baseline
@@ -719,21 +715,35 @@ def plot_sweep_multi_metric(
 
     # DataFrame columns will be raw keys; index = swept parameter values
     df = pd.DataFrame(rows).set_index("param_value")
-
-    # ----- Plot -----
+    
+    # ----- Plot ----- 
     fig, ax = plt.subplots(figsize=(10, 5))
     for raw_key in metrics_raw:
         if raw_key not in df.columns:
             continue
-        ax.plot(df.index.values, df[raw_key].values, marker="o", label=pretty_with_units(raw_key))
+        ax.plot(df.index.values, df[raw_key].values, marker="o", label=pretty_metric(raw_key))
 
-    ax.set_xlabel(param_name)  # parameters shown without units
-    ax.set_ylabel("% change of metrics relative to baseline")
-    if title is None:
-        ax.set_title(f"% change of selected metrics vs {param_name}")
+    # Pretty param label
+    xlab = param_pretty.get(param_name, param_name)
+    ax.set_xlabel(xlab)
+
+    # If only one metric → use its pretty name
+    if len(metrics_raw) == 1:
+        pretty_name = pretty_metric(metrics_raw[0])
+        ax.set_ylabel(f"% change in {pretty_name} relative to baseline")
+        if title is None:
+            ax.set_title(f"% change in {pretty_name} vs {param_name}")
+        else:
+            ax.set_title(title)
     else:
-        ax.set_title(title)
+        ax.set_ylabel("% change in metrics relative to baseline")
+        if title is None:
+            ax.set_title(f"% change in selected metrics vs {xlab}")
+        else:
+            ax.set_title(title)
+
     ax.grid(True)
+
 
     if show_legend:
         if legend_outside:
