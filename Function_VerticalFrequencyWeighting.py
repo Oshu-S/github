@@ -19,7 +19,6 @@ from typing import List, Optional
 # If when function is called, the user does not specify the parameters, the default values will be used.
 def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0):
     def _validate_breakpoints(low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
-        # Enforce monotonic increasing breakpoints and sensible ranges
         eps = 1e-6
         f_low       = max(eps, f_low)
         f_mid_start = max(f_low + eps, f_mid_start)
@@ -35,99 +34,113 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     # Load data
     data = pd.read_csv(file_path)
     accel_data = data.iloc[trial_index, 1:].values
-    # The above code snippet in Python is setting the variable `fs` to a value of 100, which
-    # represents the sampling rate in Hertz. This means that the data is being sampled at a rate of
-    # 100 samples per second, with a time step of 0.01 seconds between each sample.
-    accel_mean = np.mean(accel_data)
-    acceleration =  accel_data - accel_mean  # Remove mean --> Centre time-history around zero + Remove 0 Hz spike in FFT
 
-    # 1. Setup time and sampling
-    dt = 1 / fs
+    accel_mean = np.mean(accel_data)
+    acceleration = accel_data - accel_mean  # center
+
+    # 1) Time & FFT prep
+    dt = 1.0 / fs
     n = len(acceleration)
     t = np.arange(n) * dt
 
-    # 2. Frequency vector for FFT
     freq_vector = fftfreq(n, d=dt)
     acc_fft = fft(acceleration)
-    magnitude = np.abs(acc_fft) / n  # Normalize
+    magnitude = np.abs(acc_fft) / n
 
-    # 3. Create weighting vector (same length as FFT)
-    weights = np.ones_like(freq_vector)
-
-    # Apply weighting only for positive frequencies (mirror for negative)
+    # 2) Weighting on positive freqs
     positive_freqs = freq_vector[:n//2 + 1]
     W = np.zeros_like(positive_freqs)
-    positive_magnitude = magnitude[:n//2 + 1]
-
-    # Create weighting parameters
-    f_flat_start = f_mid_end  # Start of flat 1.0 region (segment 3)
-
-    # Value at the end of Segment 1 (flat) and start of Segment 2 (ramp)
     val_low = low_gain
-    val_flat = 1.0 # Most sensitive region always at 0dB or 1m/s²
+    val_flat = 1.0
+    f_flat_start = f_mid_end
 
-    # Segment 0: 0.0–f_low — linear ramp to val_low
     mask_0 = (positive_freqs > 0.0) & (positive_freqs < f_low)
     W[mask_0] = val_low * (positive_freqs[mask_0] / f_low)
 
-    # Segment 1: f_low–f_mid_start — constant at val_low
     mask_1 = (positive_freqs >= f_low) & (positive_freqs <= f_mid_start)
     W[mask_1] = val_low
 
-    # Segment 2: f_mid_start–f_mid_end — linear ramp to val_flat
     mask_2 = (positive_freqs > f_mid_start) & (positive_freqs <= f_mid_end)
     if f_mid_end > f_mid_start:
         W[mask_2] = val_low + (val_flat - val_low) * (
             (positive_freqs[mask_2] - f_mid_start) / (f_mid_end - f_mid_start)
         )
     else:
-        # degenerate safeguard: collapse to low plateau
         W[mask_2] = val_low
 
-    # Segment 3: f_flat_start–f_flat_end — constant at val_flat
     mask_3 = (positive_freqs > f_flat_start) & (positive_freqs <= f_flat_end)
     W[mask_3] = val_flat
 
-    # Segment 4: > f_flat_end — decaying 6 dB/oct slope (W = val_flat * f_flat_end / f)
     mask_4 = (positive_freqs > f_flat_end)
     W[mask_4] = val_flat * f_flat_end / positive_freqs[mask_4]
 
-    # Apply to full spectrum (positive + symmetric negative side)
-    weights[:n//2 + 1] = W
-
-    # Assign weights (mirror)
+    # Mirror weights to full spectrum
+    weights = np.ones_like(freq_vector)
     weights[:n//2 + 1] = W
     if n % 2 == 0:
         weights[n//2 + 1:] = W[1:n//2][::-1]
     else:
         weights[n//2 + 1:] = W[1:(n//2)+1][::-1]
 
-    # 4. Apply weighting to FFT
+    # 3) Apply weighting in freq domain
     weighted_fft = acc_fft * weights
+    weighted_signal = np.real(ifft(weighted_fft))
 
-    # 5. Inverse FFT to get time-weighted signal
-    weighted_signal = np.real(ifft(weighted_fft)) # Weighted acceleration time-history
-
-    # 6. Compute magnitude spectrum of weighted FFT
-    weighted_magnitude = np.abs(weighted_fft) / n  # Normalized magnitude
-
-    # 7. Extract positive frequencies only
+    weighted_magnitude = np.abs(weighted_fft) / n
     weighted_magnitude_pos = weighted_magnitude[:n//2 + 1]
+    positive_magnitude = magnitude[:n//2 + 1]
 
-    # ----------------- Plot Frequency Weighting -----------------
-    plt.figure(figsize=(10, 5))
-    plt.loglog(positive_freqs, W, label="Apply to acceleration data in units of m/s²") # Plot in m/s²
-    # plt.semilogx(positive_freqs, 20 * np.log10(W), label="Apply to acceleration data in units of dB") # Plot in dB
+    # --------- METRICS ----------
+    peak_unw = np.max(np.abs(acceleration))
+    peak_w   = np.max(np.abs(weighted_signal))
 
-    # Define 1/3-octave frequency axis ticks --> Comment out if you want to see frequency position when you hover cursor over the plot
-    octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5,
-                            1, 2, 4, 8, 16, 31.5, 63])
-    plt.xticks(octave_centers, [str(f) for f in octave_centers]) # Apply custom ticks and labels to x-axis
+    rms_unw = np.sqrt(np.mean(acceleration**2))
+    rms_w   = np.sqrt(np.mean(weighted_signal**2))
 
-    # Apply custom ticks and labels to y-axis - Acceleration, modulus, gain
-    # yaxis = np.array([0.01, 0.1, 1.0])
-    # plt.yticks(yaxis, [str(f) for f in yaxis])
+    # Running RMS (1 s window)
+    window_duration = 1.0
+    window_size = int(fs * window_duration)
+
+    def running_rms(signal, win):
+        return np.sqrt(np.convolve(signal**2, np.ones(win)/win, mode='valid'))
+
+    rms_running_unweighted = running_rms(acceleration, window_size)
+    rms_running_weighted   = running_rms(weighted_signal, window_size)
+
+    # MTVV (max running RMS)
+    mtvv_unw = np.max(rms_running_unweighted)
+    mtvv_w   = np.max(rms_running_weighted)
+
+    mtvv_root2_unw = np.sqrt(2) * mtvv_unw
+    mtvv_root2_w   = np.sqrt(2) * mtvv_w
+
+    cf_unw = peak_unw / rms_unw
+    cf_w   = peak_w   / rms_w
+
+    vdv_unw = (np.sum(acceleration**4) * dt) ** 0.25
+    vdv_w   = (np.sum(weighted_signal**4) * dt) ** 0.25
+
+    R_unw = mtvv_unw / 0.005
+    R_w   = mtvv_w   / 0.005
+
+    metrics = {
+        "Peak (m/s^2)":      [peak_unw, peak_w],
+        "RMS (m/s^2)":       [rms_unw, rms_w],
+        "MTVV (m/s^2)":      [mtvv_unw, mtvv_w],
+        "MTVV*√2 (m/s^2)":   [mtvv_root2_unw, mtvv_root2_w],
+        "CF":                [cf_unw, cf_w],
+        "VDV (m/s^1.75)":    [vdv_unw, vdv_w],
+        "R":                 [R_unw, R_w]
+    }
     
+    # --------- PLOTS ----------
+    # Frequency weighting
+    plt.figure(figsize=(10, 5))
+    plt.loglog(positive_freqs, W, label="Apply to acceleration data in units of m/s²")
+    octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
+    plt.xticks(octave_centers, [str(f) for f in octave_centers])
+    # Comment out if you want to hover over y-axis values
+    plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Frequency Weighting")
     plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
@@ -135,22 +148,38 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     plt.legend()
     plt.tight_layout()
 
-    # ----------------- Compare Unweighted and Weighted Acceleration Time-History -----------------
+    # --- PLOT: Running 1 s RMS vs time (centered timestamps) ---
+    # For mode='valid', the i-th value corresponds to samples [i, i+win-1].
+    # Use the midpoint time: t_center[i] = (i + (win-1)/2) / fs
+    Lr = len(rms_running_weighted)
+    t_rms = np.arange(Lr) / fs + (window_size - 1) / (2.0 * fs)
+    
+    # Time histories/Running 1 s RMS (unweighted)
     plt.figure(figsize=(10, 5))
-    plt.plot(t, acceleration, label="Unweighted", color='blue')
-    plt.plot(t, weighted_signal, label="Weighted", color='orange')
-    plt.title("Acceleration Time-History")
+    plt.plot(t, acceleration, label="Acceleration")
+    plt.plot(t_rms, rms_running_unweighted, label="Running RMS (1 s)")
+    plt.title("Time History of Unweighted Acceleration")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Acceleration (m/s²)")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    # Time histories/Running 1 s RMS (weighted)
+    plt.figure(figsize=(10, 5))
+    plt.plot(t, weighted_signal, label="Acceleration")
+    plt.plot(t_rms, rms_running_weighted, label="Running RMS (1 s)")
+    plt.title("Time History of Weighted Acceleration")
     plt.xlabel("Time (s)")
     plt.ylabel("Acceleration (m/s²)")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
 
-
-    # ----------------- Compare Unweighted and Weighted Spectra on the Same Plot -----------------
+    # Spectra (unweighted vs weighted)
     plt.figure(figsize=(10, 5))
-    plt.plot(positive_freqs, positive_magnitude, label="Unweighted", color='blue')
-    plt.plot(positive_freqs, weighted_magnitude_pos, label="Weighted", color='orange')
+    plt.plot(positive_freqs, positive_magnitude, label="Unweighted")
+    plt.plot(positive_freqs, weighted_magnitude_pos, label="Weighted")
     plt.title("FFT - Frequency Spectra")
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Amplitude (m/s²)")
@@ -159,76 +188,15 @@ def analyze_vibration(file_path, trial_index=0, fs=100, low_gain=0.4, f_low=0.5,
     plt.ylim(0, 0.031)
     plt.grid(True)
     plt.tight_layout()
-
-    # ----------------- Vibration Serviceability Metrics -----------------
-    # Peak Acceleration 
-    peak_unw = np.max(np.abs(acceleration))
-    peak_w = np.max(np.abs(weighted_signal))
-
-    # RMS Acceleration
-    rms_unw = np.sqrt(np.mean(acceleration ** 2))
-    rms_w = np.sqrt(np.mean(weighted_signal ** 2))
-
-    # MTVV (Running RMS, 1s)
-    # Define window parameters
-    window_duration = 1.0  # seconds
-    window_size = int(fs * window_duration)  # number of samples in 1 second
-    # Function to calculate running RMS
-    def running_rms(signal, window_size):
-        return np.sqrt(np.convolve(signal**2, np.ones(window_size)/window_size, mode='valid'))
-    # Calculate running RMS for unweighted and weighted signals
-    rms_running_unweighted = running_rms(acceleration, window_size)
-    rms_running_weighted = running_rms(weighted_signal, window_size)
-    # Find the maximum RMS in those running windows
-    mtvv_unw = np.max(rms_running_unweighted)
-    mtvv_w = np.max(rms_running_weighted)
-
-    # MTVV*√ = Peak Acceleration
-    mtvv_root2_unw = np.sqrt(2)*mtvv_unw
-    mtvv_root2_w = np.sqrt(2)*mtvv_w
-
-    # Crest Factor (CF)
-    cf_unw = peak_unw / rms_unw
-    cf_w = peak_w / rms_w
-
-    # Vibration Dose Value (VDV)
-    vdv_unw = (np.sum(acceleration**4) * dt) ** 0.25
-    vdv_w = (np.sum(weighted_signal**4) * dt) ** 0.25
-
-    # Response Factor (R)
-    R_unw = mtvv_unw/0.005
-    R_w = mtvv_w/0.005
-
-    # Make Table of Vibration Serviceability Metrics
-    metrics = {
-        "Peak (m/s^2)": [peak_unw, peak_w],
-        "RMS (m/s^2)": [rms_unw, rms_w],
-        "MTVV (m/s^2)": [mtvv_unw, mtvv_w],
-        "MTVV*√2 (m/s^2)": [mtvv_root2_unw, mtvv_root2_w],
-        "CF": [cf_unw, cf_w],
-        "VDV (m/s^1.75)": [vdv_unw, vdv_w],
-        "R": [R_unw, R_w]
-    }
-    # Create DataFrame
+    
     df_metrics = pd.DataFrame(metrics, index=["Unweighted", "Weighted"])
-    # Display table
     print(tabulate(df_metrics.round(6), headers='keys', tablefmt='grid', numalign="center", stralign="center"))
     
     plt.show()
-    return t, weighted_signal
 
-# df = analyze_vibration(
-#     file_path="results_500mc_trial_matrix.csv",
-#     low_gain=0.4,
-#     f_low=0.5,
-#     f_mid_start=2.0,
-#     f_mid_end=5.0,
-#     f_flat_end=16.0
-# )
+    return t, acceleration, weighted_signal, t_rms, rms_running_unweighted, rms_running_weighted, df_metrics
 
-# Calling function from another file:
-# - Comment out the function call above (line 198)
-# from Function_VerticalFrequencyWeighting import analyze_vibration
+
 
 # ===========================
 # Core helpers (no plotting)
