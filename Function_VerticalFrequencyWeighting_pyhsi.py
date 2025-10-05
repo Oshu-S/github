@@ -1,0 +1,731 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import math
+from scipy.fft import fft, ifft, fftfreq
+from tabulate import tabulate
+from typing import List, Optional
+
+# ---- Function Parameters ----
+# file_path: Path to the CSV file containing acceleration data
+# low_gain: Gain for the flat, low frequency region (m/s²)
+# f_low: Position of lower edge of flat, low frequency region (Hz)
+# f_mid_start: Position of start of ramp up (segment 2) (Hz)
+# f_mid_end: Position of end of ramp up (segment 2) (Hz)
+# f_flat_start: Position of start of flat, most sensitive region (segment 3) (Hz)
+# f_flat_end: Position of end of flat, most sensitive region (Hz)
+
+# If when function is called, the user does not specify the parameters, the default values will be used.
+def analyze_vibration(file_path, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0):
+    def _validate_breakpoints(low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
+        eps = 1e-6
+        f_low       = max(eps, f_low)
+        f_mid_start = max(f_low + eps, f_mid_start)
+        f_mid_end   = max(f_mid_start + eps, f_mid_end)
+        f_flat_end  = max(f_mid_end + eps, f_flat_end)
+        low_gain    = float(low_gain)
+        return low_gain, f_low, f_mid_start, f_mid_end, f_flat_end
+    
+    low_gain, f_low, f_mid_start, f_mid_end, f_flat_end = _validate_breakpoints(
+        low_gain, f_low, f_mid_start, f_mid_end, f_flat_end
+    )
+
+    # Load data
+    # Read CSV (use utf-8 to be safe with the superscript ²)
+    df = pd.read_csv(file_path, encoding="utf-8")
+    accel_data = df["Acceleration With HSI (m/s²)"].to_numpy()
+    # t = df["Time (s)"].to_numpy()
+
+    accel_mean = np.mean(accel_data)
+    acceleration = accel_data - accel_mean  # center
+
+    # 1) Time & FFT prep
+    dt = 0.01  # actual average time step from the CSV
+    fs = 1.0 / dt
+    n = len(acceleration)
+    t = np.arange(n) * dt
+    
+    freq_vector = fftfreq(n, d=dt)
+    acc_fft = fft(acceleration)
+    magnitude = np.abs(acc_fft) / n
+
+    # 2) Weighting on positive freqs
+    positive_freqs = freq_vector[:n//2 + 1]
+    positive_freqs = np.maximum(positive_freqs, 0)  # clamp any small negatives to 0
+    positive_magnitude = magnitude[:n//2 + 1]
+    W = np.zeros_like(positive_freqs)
+    val_low = low_gain
+    val_flat = 1.0
+    f_flat_start = f_mid_end
+
+    mask_0 = (positive_freqs > 0.0) & (positive_freqs < f_low)
+    W[mask_0] = val_low * (positive_freqs[mask_0] / f_low)
+
+    mask_1 = (positive_freqs >= f_low) & (positive_freqs <= f_mid_start)
+    W[mask_1] = val_low
+
+    mask_2 = (positive_freqs > f_mid_start) & (positive_freqs <= f_mid_end)
+    if f_mid_end > f_mid_start:
+        W[mask_2] = val_low + (val_flat - val_low) * (
+            (positive_freqs[mask_2] - f_mid_start) / (f_mid_end - f_mid_start)
+        )
+    else:
+        W[mask_2] = val_low
+
+    mask_3 = (positive_freqs > f_flat_start) & (positive_freqs <= f_flat_end)
+    W[mask_3] = val_flat
+
+    mask_4 = (positive_freqs > f_flat_end)
+    W[mask_4] = val_flat * f_flat_end / positive_freqs[mask_4]
+
+    # Mirror weights to full spectrum
+    weights = np.ones_like(freq_vector)
+    weights[:n//2 + 1] = W
+    if n % 2 == 0:
+        weights[n//2 + 1:] = W[1:n//2][::-1]
+    else:
+        weights[n//2 + 1:] = W[1:(n//2)+1][::-1]
+
+    # 3) Apply weighting in freq domain
+    weighted_fft = acc_fft * weights
+    weighted_signal = np.real(ifft(weighted_fft))
+
+    weighted_magnitude = np.abs(weighted_fft) / n
+    weighted_magnitude_pos = weighted_magnitude[:n//2 + 1]
+
+    # --------- METRICS ----------
+    peak_unw = np.max(np.abs(acceleration))
+    peak_w   = np.max(np.abs(weighted_signal))
+
+    rms_unw = np.sqrt(np.mean(acceleration**2))
+    rms_w   = np.sqrt(np.mean(weighted_signal**2))
+
+    # Running RMS (1 s window)
+    window_duration = 1.0
+    window_size = int(fs * window_duration)
+
+    def running_rms(signal, win):
+        return np.sqrt(np.convolve(signal**2, np.ones(win)/win, mode='valid'))
+
+    rms_running_unweighted = running_rms(acceleration, window_size)
+    rms_running_weighted   = running_rms(weighted_signal, window_size)
+
+    # MTVV (max running RMS)
+    mtvv_unw = np.max(rms_running_unweighted)
+    mtvv_w   = np.max(rms_running_weighted)
+
+    mtvv_root2_unw = np.sqrt(2) * mtvv_unw
+    mtvv_root2_w   = np.sqrt(2) * mtvv_w
+
+    cf_unw = peak_unw / rms_unw
+    cf_w   = peak_w   / rms_w
+
+    vdv_unw = (np.sum(acceleration**4) * dt) ** 0.25
+    vdv_w   = (np.sum(weighted_signal**4) * dt) ** 0.25
+
+    R_unw = mtvv_unw / 0.005
+    R_w   = mtvv_w   / 0.005
+
+    metrics = {
+        "Peak (m/s^2)":      [peak_unw, peak_w],
+        "RMS (m/s^2)":       [rms_unw, rms_w],
+        "MTVV (m/s^2)":      [mtvv_unw, mtvv_w],
+        "MTVV*√2 (m/s^2)":   [mtvv_root2_unw, mtvv_root2_w],
+        "CF":                [cf_unw, cf_w],
+        "VDV (m/s^1.75)":    [vdv_unw, vdv_w],
+        "R":                 [R_unw, R_w]
+    }
+    
+    # --------- PLOTS ----------
+    # Frequency weighting
+    plt.figure(figsize=(10, 5))
+    mask = positive_freqs > 0    
+    plt.loglog(positive_freqs[mask], W[mask], label="Apply to acceleration data in units of m/s²")
+    octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
+    plt.xticks(octave_centers, [str(f) for f in octave_centers])
+    # Comment out if you want to hover over y-axis values
+    plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Frequency Weighting")
+    plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+    plt.legend()
+    plt.tight_layout()
+
+    # --- PLOT: Running 1 s RMS vs time (centered timestamps) ---
+    # For mode='valid', the i-th value corresponds to samples [i, i+win-1].
+    # Use the midpoint time: t_center[i] = (i + (win-1)/2) / fs
+    Lr = len(rms_running_weighted)
+    t_rms = np.arange(Lr) / fs + (window_size - 1) / (2.0 * fs)
+    
+    # Time histories/Running 1 s RMS (unweighted)
+    plt.figure(figsize=(10, 5))
+    plt.plot(t, acceleration, label="Acceleration")
+    plt.plot(t_rms, rms_running_unweighted, label="Running RMS (1 s)")
+    plt.title("Time History of Unweighted Acceleration")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Acceleration (m/s²)")
+    # plt.yticks(np.arange(-0.16, 0.16, step=0.02))
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    
+    # Time histories/Running 1 s RMS (weighted)
+    plt.figure(figsize=(10, 5))
+    plt.plot(t, weighted_signal, label="Acceleration")
+    plt.plot(t_rms, rms_running_weighted, label="Running RMS (1 s)")
+    plt.title("Time History of Weighted Acceleration")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Acceleration (m/s²)")
+    # plt.yticks(np.arange(-0.16, 0.16, step=0.02))
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    # Spectra FFT (unweighted vs weighted)
+    plt.figure(figsize=(10, 5))
+    plt.plot(positive_freqs, positive_magnitude, label="Unweighted")
+    plt.plot(positive_freqs, weighted_magnitude_pos, label="Weighted")
+    plt.title("FFT - Frequency Spectra")
+    plt.xlabel("Frequency (Hz)")
+    plt.ylabel("Amplitude (m/s²)")
+    plt.legend()
+    plt.xlim(0, 20)
+    # plt.ylim(0, 0.031)
+    plt.grid(True)
+    plt.tight_layout()
+    
+    df_metrics = pd.DataFrame(metrics, index=["Unweighted", "Weighted"])
+    print(tabulate(df_metrics.round(6), headers='keys', tablefmt='grid', numalign="center", stralign="center"))
+    
+    plt.show()
+
+    return t, acceleration, weighted_signal, t_rms, rms_running_unweighted, rms_running_weighted, df_metrics
+
+
+
+# ===========================
+# Core helpers (no plotting)
+# ===========================
+def _build_weighting_array(positive_freqs, low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
+    W = np.zeros_like(positive_freqs, dtype=float)
+    val_low = low_gain
+    val_flat = 1.0
+    f_flat_start = f_mid_end
+
+    # seg 0: 0..f_low (linear up to low plateau)
+    mask_0 = (positive_freqs > 0.0) & (positive_freqs < f_low)
+    W[mask_0] = val_low * (positive_freqs[mask_0] / f_low)
+
+    # seg 1: f_low..f_mid_start (low plateau)
+    mask_1 = (positive_freqs >= f_low) & (positive_freqs <= f_mid_start)
+    W[mask_1] = val_low
+
+    # seg 2: f_mid_start..f_mid_end (ramp up to 1.0)
+    mask_2 = (positive_freqs > f_mid_start) & (positive_freqs <= f_mid_end)
+    if f_mid_end > f_mid_start:
+        W[mask_2] = val_low + (val_flat - val_low) * (
+            (positive_freqs[mask_2] - f_mid_start) / (f_mid_end - f_mid_start)
+        )
+    else:
+        W[mask_2] = val_low  # degenerate safeguard
+
+    # seg 3: f_flat_start..f_flat_end (flat at 1.0)
+    mask_3 = (positive_freqs > f_flat_start) & (positive_freqs <= f_flat_end)
+    W[mask_3] = val_flat
+
+    # seg 4: > f_flat_end (6 dB/oct ≈ 1/f)
+    mask_4 = (positive_freqs > f_flat_end)
+    W[mask_4] = np.where(positive_freqs[mask_4] > 0.0, val_flat * f_flat_end / positive_freqs[mask_4], 0.0)
+
+    # DC exactly zero
+    W[positive_freqs == 0.0] = 0.0
+    return W
+
+
+def _metrics_no_plots(acceleration, fs, low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
+    """Compute metrics without plotting; returns dict with _unweighted and _weighted values."""
+    acceleration = np.asarray(acceleration, dtype=float)
+    acceleration = acceleration - np.mean(acceleration)
+
+    n = len(acceleration)
+    dt = 1.0 / fs
+
+    acc_fft = fft(acceleration)
+    freq_vector = fftfreq(n, d=dt)
+
+    # positive side
+    posN = n // 2 + 1
+    positive_freqs = freq_vector[:posN]
+
+    # build weights (positive) and mirror to full spectrum
+    Wpos = _build_weighting_array(positive_freqs, low_gain, f_low, f_mid_start, f_mid_end, f_flat_end)
+    weights = np.empty_like(freq_vector, dtype=float)
+    weights[:posN] = Wpos
+    if n % 2 == 0:
+        weights[posN:] = Wpos[1:posN-1][::-1]
+    else:
+        weights[posN:] = Wpos[1:posN][::-1]
+
+    weighted_fft = acc_fft * weights
+    weighted_signal = np.real(ifft(weighted_fft))
+
+    # --- metrics ---
+    peak_unw = float(np.max(np.abs(acceleration)))
+    peak_w   = float(np.max(np.abs(weighted_signal)))
+
+    rms_unw = float(np.sqrt(np.mean(acceleration**2)))
+    rms_w   = float(np.sqrt(np.mean(weighted_signal**2)))
+
+    # MTVV: running RMS with 1 s window
+    window = int(fs * 1.0)
+    def running_rms(sig, w):
+        return np.sqrt(np.convolve(sig**2, np.ones(w)/w, mode='valid'))
+    mtvv_unw = float(np.max(running_rms(acceleration, window)))
+    mtvv_w   = float(np.max(running_rms(weighted_signal, window)))
+
+    mtvv_root2_unw = float(np.sqrt(2.0) * mtvv_unw)
+    mtvv_root2_w   = float(np.sqrt(2.0) * mtvv_w)
+
+    cf_unw = float(peak_unw / rms_unw) if rms_unw > 0 else np.inf
+    cf_w   = float(peak_w   / rms_w)   if rms_w   > 0 else np.inf
+
+    vdv_unw = float((np.sum(acceleration**4) * dt) ** 0.25)
+    vdv_w   = float((np.sum(weighted_signal**4) * dt) ** 0.25)
+
+    R_unw = float(mtvv_unw / 0.005)
+    R_w   = float(mtvv_w   / 0.005)
+
+    return {
+        "Peak_unweighted": peak_unw,  "Peak_weighted": peak_w,
+        "RMS_unweighted": rms_unw,    "RMS_weighted": rms_w,
+        "MTVV_unweighted": mtvv_unw,  "MTVV_weighted": mtvv_w,
+        "MTVV_sqrt2_unweighted": mtvv_root2_unw, "MTVV_sqrt2_weighted": mtvv_root2_w,
+        "CF_unweighted": cf_unw,      "CF_weighted": cf_w,
+        "VDV_unweighted": vdv_unw,    "VDV_weighted": vdv_w,
+        "R_unweighted": R_unw,        "R_weighted": R_w
+    }
+
+
+def _load_trial_series(file_path, trial_index=0):
+    """Helper: load one trial row (col0 label, others are samples) and return acceleration array."""
+    data = pd.read_csv(file_path)
+    accel_data = data.iloc[trial_index, 1:].values.astype(float)
+    return accel_data
+
+# ====================================================
+# Local derivative-based sensitivity at a baseline
+# one-at-a-time (OAT) local, derivative-based sensitivity using central finite differences
+# Partial derivatives tell us the absolute sensitivity of a metric w.r.t. a parameter --> Has units (metric units/parameter units)
+# Elasticity scales the partial derivative into a dimensionless measure 
+#   --> percentage change in the output per percentage change in the input.
+#   --> Dimensionless ratio
+# ====================================================
+def local_sensitivity_from_file(
+    file_path,
+    trial_index=0,
+    fs=100,
+    base_params=None,
+    rel_step=0.05,
+    metrics_to_track=None, # ← default None => all 7 weighted metrics
+    print_elast=None,
+    print_dydp=None,
+):
+    """
+    Computes one-at-a-time sensitivities at baseline using symmetric finite differences.
+    Prints tabulated Elasticity and dY/dP tables (CF & R unitless; parameters shown without units).
+    Returns:
+      - df_elasticity (programmatic columns)
+      - df_dydp       (programmatic columns)
+    """
+    if base_params is None:
+        base_params = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
+
+    # Default to ALL seven weighted metrics
+    if metrics_to_track is None:
+        metrics_to_track = (
+            "Peak_weighted",
+            "RMS_weighted",
+            "MTVV_weighted",
+            "MTVV_sqrt2_weighted",
+            "CF_weighted",
+            "VDV_weighted",
+            "R_weighted",
+        )
+
+    # ---- pretty metric names & units (CF, R unitless) ----
+    metric_pretty = {
+        "Peak_weighted": "Peak",
+        "RMS_weighted": "RMS",
+        "MTVV_weighted": "MTVV",
+        "MTVV_sqrt2_weighted": "MTVV*√2",
+        "CF_weighted": "CF",
+        "VDV_weighted": "VDV",
+        "R_weighted": "R",
+    }
+    metric_units = {
+        "Peak_weighted": "m/s^2",
+        "RMS_weighted": "m/s^2",
+        "MTVV_weighted": "m/s^2",
+        "MTVV_sqrt2_weighted": "m/s^2",
+        "CF_weighted": "",          # unitless
+        "VDV_weighted": "m/s^1.75",
+        "R_weighted": "",           # unitless
+    }
+
+    # ---- load and baseline ----
+    accel = _load_trial_series(file_path, trial_index=trial_index)
+    m0 = _metrics_no_plots(accel, fs, **base_params)
+    y0 = np.array([m0[k] for k in metrics_to_track], dtype=float)
+
+    param_order = ["low_gain", "f_low", "f_mid_start", "f_mid_end", "f_flat_end"]
+    dydp_mat = np.zeros((len(param_order), len(metrics_to_track)), dtype=float)
+    elast_mat = np.zeros_like(dydp_mat)
+
+    for i, pname in enumerate(param_order):
+        p0 = float(base_params[pname])
+        step = rel_step * max(abs(p0), 1e-12)
+
+        # guard: keep frequencies positive on the down step
+        p_down = p0 - step
+        if pname.startswith("f_") and p_down <= 0.0:
+            p_down = p0
+
+        # evaluate down
+        par_down = dict(base_params); par_down[pname] = p_down
+        y_down = np.array([_metrics_no_plots(accel, fs, **par_down)[k] for k in metrics_to_track], dtype=float)
+
+        # evaluate up
+        p_up = p0 + step
+        par_up = dict(base_params); par_up[pname] = p_up
+        y_up = np.array([_metrics_no_plots(accel, fs, **par_up)[k] for k in metrics_to_track], dtype=float)
+
+        dy = y_up - y_down
+        dp = (p_up - p_down) if (p_up - p_down) != 0 else step
+        dydp = dy / dp
+        dydp_mat[i, :] = dydp
+
+        # elasticity = (dy/y0) / (dp/p0) = dydp * (p0 / y0)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            elast = dydp * (p0 / y0)
+        elast[~np.isfinite(elast)] = np.nan
+        elast_mat[i, :] = elast
+
+    # Programmatic DataFrames (for code use)
+    df_elasticity = pd.DataFrame(elast_mat, index=param_order, columns=metrics_to_track)
+    df_dydp       = pd.DataFrame(dydp_mat,   index=param_order, columns=metrics_to_track)
+
+    # ---------- Pretty printing ----------
+    # 1) Elasticity (dimensionless) – pretty metric names
+    if print_elast is None:
+        df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
+        df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
+        print("\nElasticity (%ΔMetric / %ΔParameter) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
+        print(tabulate(df_elast_print, headers="keys", tablefmt="grid", numalign="center", stralign="center"))
+
+    # 2) Partial derivatives – metric units only in headers; parameters shown without units
+    if print_dydp is None:
+        col_with_units = {
+            k: f"{metric_pretty[k]}{f' ({metric_units[k]})' if metric_units[k] else ''}"
+            for k in df_dydp.columns
+        }
+        df_dydp_u = df_dydp.rename(columns=col_with_units).copy()
+        df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
+
+        df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
+        print("\nPartial derivatives (∂M/∂P) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
+        print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
+                    numalign="center", stralign="center"))
+
+    # Return programmatic frames (without prettified labels) for plotting/saving
+    return df_elasticity, df_dydp
+
+# ====================================================
+# Tornado plots for local elasticities
+# ====================================================
+def tornado_grid_elasticity(
+    df_elasticity,
+    metrics_to_plot: Optional[List[str]] = None,
+    ncols: int = 2,
+    sharex: bool = True,
+    annotate: bool = True,
+    figsize_per: tuple = (6, 3.8),  # width, height per subplot
+    title: str = "Local Sensitivity (Elasticity)",
+    tight_layout: bool = True,
+    save_path: Optional[str] = None
+):
+    """
+    Render all tornado charts (elasticity) as subplots in a single figure.
+    Accepts DataFrames with either raw metric keys (*_weighted) or pretty keys,
+    and always displays pretty titles.
+    """
+
+    # --- mapping between programmatic and pretty ---
+    metric_pretty = {
+        "Peak_weighted": "Peak",
+        "RMS_weighted": "RMS",
+        "MTVV_weighted": "MTVV",
+        "MTVV_sqrt2_weighted": "MTVV*√2",
+        "CF_weighted": "CF",
+        "VDV_weighted": "VDV",
+        "R_weighted": "R",
+    }
+    pretty_to_raw = {v: k for k, v in metric_pretty.items()}
+
+    # Helper: given a requested name, find the column key and display name
+    def resolve_metric(name):
+        # If the exact name is in the DF, use it; choose display accordingly
+        if name in df_elasticity.columns:
+            # If it's a raw key, map to pretty for display; else keep as is
+            disp = metric_pretty.get(name, name)
+            return name, disp
+        # If a pretty name was passed, see if its raw exists
+        if name in pretty_to_raw and pretty_to_raw[name] in df_elasticity.columns:
+            return pretty_to_raw[name], name
+        # Last chance: try common alias for sqrt2 variations
+        aliases = {
+            "MTVV*sqrt(2)": "MTVV_sqrt2_weighted",
+            "MTVV_sqrt2": "MTVV_sqrt2_weighted",
+            "MTVV×√2": "MTVV_sqrt2_weighted",
+        }
+        if name in aliases and aliases[name] in df_elasticity.columns:
+            return aliases[name], metric_pretty.get(aliases[name], name)
+        raise KeyError(f"Metric '{name}' not found in df_elasticity columns {list(df_elasticity.columns)}")
+
+    # If no list provided, use whatever is in the DF, but derive pretty display names
+    if metrics_to_plot is None:
+        metrics_to_plot = list(df_elasticity.columns)
+
+    # Build the list of (col_key, display_name) in requested order
+    resolved = []
+    for m in metrics_to_plot:
+        col_key, disp = resolve_metric(m)
+        resolved.append((col_key, disp))
+
+    # Layout
+    nplots = len(resolved)
+    nrows = math.ceil(nplots / ncols)
+    fig_w = figsize_per[0] * ncols
+    fig_h = figsize_per[1] * nrows
+    fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(fig_w, fig_h), sharex=sharex)
+    if nrows == 1 and ncols == 1:
+        axes = np.array([[axes]])
+    elif nrows == 1:
+        axes = np.array([axes])
+    elif ncols == 1:
+        axes = axes.reshape(-1, 1)
+
+    # Common x-limits if requested
+    if sharex:
+        all_vals = []
+        for col_key, _disp in resolved:
+            s = df_elasticity[col_key].dropna()
+            all_vals.extend(s.values.tolist())
+        xabs = np.nanmax(np.abs(all_vals)) if len(all_vals) else 1.0
+        xlim = (-1.05 * xabs, 1.05 * xabs)
+    else:
+        xlim = None
+
+    desired_param_order = ["low_gain", "f_low", "f_mid_start", "f_mid_end", "f_flat_end"]
+
+    # Draw each subplot
+    for idx, (col_key, disp) in enumerate(resolved):
+        r = idx // ncols
+        c = idx % ncols
+        ax = axes[r, c]
+
+        # Reindex to a common order (no sorting by magnitude)
+        s = df_elasticity[col_key].reindex(desired_param_order)
+
+        y = np.arange(len(desired_param_order))
+        ax.barh(y, s.values)
+        ax.set_yticks(y)
+        ax.set_yticklabels(desired_param_order)  # bottom→top in this order
+        ax.axvline(0.0, linewidth=1.0)
+        ax.grid(True, axis="x", linestyle="--", linewidth=0.5)
+        ax.set_title(disp)  # pretty title
+
+        if sharex:
+            ax.set_xlim(*xlim)
+        else:
+            local_max = np.nanmax(np.abs(s.values)) if len(s) else 1.0
+            ax.set_xlim(-1.05 * local_max, 1.05 * local_max)
+
+        if annotate:
+            xmin, xmax = ax.get_xlim()
+            span = xmax - xmin
+            for yi, val in enumerate(s.values):
+                if np.isnan(val):
+                    continue
+                xoff = 0.02 * (1 if val >= 0 else -1) * span
+                ax.text(val + xoff, yi, f"{val:.2f}", va="center")
+
+        ax.set_xlabel("Elasticity (%ΔMetric / %ΔParameter)")
+
+
+    # Hide any extra axes (when grid > number of plots)
+    for extra in range(nplots, nrows * ncols):
+        r = extra // ncols
+        c = extra % ncols
+        axes[r, c].axis("off")
+
+    fig.suptitle(title, y=0.995)
+    if tight_layout:
+        plt.tight_layout(rect=(0, 0, 1, 0.97))
+    if save_path:
+        plt.savefig(save_path, dpi=200)
+    plt.show()
+
+# ====================================================
+# Range sweep: user-defined ranges → % change w.r.t. baseline
+# Plot sweep to see how metrics change as one weighting curve parameter is swept
+# - one-at-a-time global sweep (but not derivative-based)
+# - Show how metrics change when you move a parameter across a user-defined range with others fixed
+# - 1.Set that parameter to the grid value (others at baseline). 2.Recompute metrics. 3.Report % change relative to baseline:
+# ====================================================
+def plot_sweep_multi_metric(
+    file_path,
+    trial_index=0,
+    fs=100,
+    base_params=None,
+    param_name="low_gain",
+    param_range=(0.2, 0.6),
+    samples=9,
+    metrics=None,
+    title=None,
+    show_legend=True,
+    legend_outside=True,
+):
+    """
+    Plot % change (relative to baseline) for multiple metrics as the chosen parameter is swept.
+    Accepts 'metrics' as raw keys or pretty names (or a mix).
+    """
+
+    if base_params is None:
+        base_params = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0)
+    if param_name not in base_params:
+        raise ValueError(f"param_name '{param_name}' not in base_params: {list(base_params.keys())}")
+    if samples < 2:
+        raise ValueError("samples must be >= 2")
+
+    # --- mapping between programmatic and pretty ---
+    metric_pretty = {
+        "Peak_weighted": "Peak acceleration",
+        "RMS_weighted": "RMS acceleration",
+        "MTVV_weighted": "MTVV",
+        "MTVV_sqrt2_weighted": "MTVV*√2",
+        "CF_weighted": "CF",
+        "VDV_weighted": "VDV",
+        "R_weighted": "R",
+    }
+    pretty_to_raw = {v: k for k, v in metric_pretty.items()}
+
+    # Parameter pretty labels (with units where relevant)
+    param_pretty = {
+        "low_gain": "low_gain (dB)",
+        "f_low": "f_low (Hz)",
+        "f_mid_start": "f_mid_start (Hz)",
+        "f_mid_end": "f_mid_end (Hz)",
+        "f_flat_end": "f_flat_end (Hz)",
+    }
+
+    # Accept a few common aliases for the sqrt(2) metric name
+    alias_to_raw = {
+        "MTVV*sqrt(2)": "MTVV_sqrt2_weighted",
+        "MTVV_sqrt2": "MTVV_sqrt2_weighted",
+        "MTVV×√2": "MTVV_sqrt2_weighted",
+    }
+
+    def resolve_to_raw(name: str) -> str:
+        """Return the internal raw metric key for any given name/alias."""
+        if name in metric_pretty:              # already a raw key
+            return name
+        if name in pretty_to_raw:              # pretty → raw
+            return pretty_to_raw[name]
+        if name in alias_to_raw:               # alias → raw
+            return alias_to_raw[name]
+        # As a last resort, accept exact string if user passed another valid raw key
+        return name
+
+    def pretty_metric(raw_key: str) -> str:
+        return metric_pretty.get(raw_key, raw_key)
+
+    # Default metrics = all 7 weighted (raw keys)
+    if metrics is None:
+        metrics_raw = list(metric_pretty.keys())
+    else:
+        metrics_raw = [resolve_to_raw(m) for m in metrics]
+
+    # Load once and compute baseline
+    accel = _load_trial_series(file_path, trial_index=trial_index)
+    baseline = _metrics_no_plots(accel, fs, **base_params)
+
+    # Make sure all requested raw metrics exist in baseline
+    missing = [m for m in metrics_raw if m not in baseline]
+    if missing:
+        raise KeyError(f"Requested metrics not found: {missing}. "
+                       f"Valid keys include: {list(baseline.keys())}")
+
+    y0 = {m: baseline[m] for m in metrics_raw}
+
+    # Build sweep grid
+    lo, hi = float(param_range[0]), float(param_range[1])
+    grid = np.linspace(lo, hi, samples)
+
+    rows = []
+    for val in grid:
+        params = dict(base_params)
+        # keep frequencies > 0
+        if param_name.startswith("f_") and val <= 0.0:
+            val = max(1e-6, lo)
+        params[param_name] = float(val)
+
+        m = _metrics_no_plots(accel, fs, **params)
+        row = {"param_value": val}
+        for k in metrics_raw:
+            base_val = y0[k]
+            row[k] = np.nan if base_val == 0 else 100.0 * (m[k] - base_val) / base_val
+        rows.append(row)
+
+    # DataFrame columns will be raw keys; index = swept parameter values
+    df = pd.DataFrame(rows).set_index("param_value")
+    
+    # ----- Plot ----- 
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for raw_key in metrics_raw:
+        if raw_key not in df.columns:
+            continue
+        ax.plot(df.index.values, df[raw_key].values, marker="o", label=pretty_metric(raw_key))
+
+    # Pretty param label
+    xlab = param_pretty.get(param_name, param_name)
+    ax.set_xlabel(xlab)
+
+    # If only one metric → use its pretty name
+    if len(metrics_raw) == 1:
+        pretty_name = pretty_metric(metrics_raw[0])
+        ax.set_ylabel(f"% change in {pretty_name} relative to baseline")
+        if title is None:
+            ax.set_title(f"% change in {pretty_name} vs {param_name}")
+        else:
+            ax.set_title(title)
+    else:
+        ax.set_ylabel("% change in metrics relative to baseline")
+        if title is None:
+            ax.set_title(f"% change in selected metrics vs {xlab}")
+        else:
+            ax.set_title(title)
+
+    ax.grid(True)
+
+
+    if show_legend:
+        if legend_outside:
+            fig.legend(loc="upper right", bbox_to_anchor=(0.98, 0.98))
+        else:
+            ax.legend()
+
+    plt.tight_layout(rect=(0, 0, 0.96, 0.96) if legend_outside else None)
+    plt.show()
+
+    return df

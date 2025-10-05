@@ -75,12 +75,44 @@ u,du,ddu_hsi = Newmarksuper_HSI (Human,Bridge,numped,numbers,length,hht,pedveloc
 accn_hsi = accdyn_super(Bridge,ddu_hsi,x_interested,hht)
 #vertical_displacement = accdyn_super(Bridge,u,25,hht)
 
+# --- FFT of "with HSI" acceleration (accn_hsi) ---
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Sampling info
+dt = hht                     # your time step (0.01 s)
+fs = 1.0 / dt
+n  = len(accn_hsi)
+
+# (Recommended) remove DC before FFT
+x = accn_hsi - np.mean(accn_hsi)
+
+# One-sided spectrum (rfft) → frequencies 0..fs/2
+freqs = np.fft.rfftfreq(n, d=dt)
+X = np.fft.rfft(x)
+
+# Amplitude spectrum (m/s^2) — normalized by n
+amp = np.abs(X) / n
+
+# Optional: convert to amplitude spectral density (per √Hz)
+# asd = amp / np.sqrt(fs/2)   # comment out if you just want 'amp'
+
+# Plot
+plt.figure(figsize=(9,4.5))
+plt.plot(freqs, amp, lw=1.2)
+plt.xlabel("Frequency (Hz)")
+plt.ylabel("Amplitude (m/s²)")
+plt.title("FFT Amplitude Spectrum — With HSI")
+plt.xlim(0, fs/2)           # show up to Nyquist
+plt.grid(True, ls="--", lw=0.5)
+plt.tight_layout()
 
 u,du,ddu = Newmarksuper_HSI (Human,Bridge,numped,numbers,length,hht,pedvelocity,mped,[0],[0],xrb,linearMass)
                 
 accn = accdyn_super(Bridge,ddu,x_interested,hht)
 
 t = np.arange(0, (length+1) / pedvelocity, hht)
+plt.figure(figsize=(9,4.5))
 plt.plot(t,accn , label ="without HSI" ,color='r')
 plt.plot(t,accn_hsi,label ="with HSI",color='b')
 plt.title("mid span acceleration")
@@ -92,16 +124,16 @@ plt.show()
 #print("ddu",ddu)
 #print("accn",accn)
 
-import pandas as pd
 
-# Create a DataFrame for exporting
-df = pd.DataFrame({
-    "Time (s)": t,
-    "Acceleration Without HSI (m/s²)": accn,
-    "Acceleration With HSI (m/s²)": accn_hsi
-})
+# # Create a DataFrame for exporting
+# import pandas as pd
+# df = pd.DataFrame({
+#     "Time (s)": t,
+#     "Acceleration Without HSI (m/s²)": accn,
+#     "Acceleration With HSI (m/s²)": accn_hsi
+# })
 
-# Save to CSV
-df.to_csv(r"d:\Monash\Year5\FYP\github\pyhsi_results.csv", index=False)
+# # Save to CSV
+# df.to_csv(r"C:\Users\Admin\OneDrive\Documents\Monash stuff\Year 5\FYP\github\pyhsi_results.csv", index=False)
 
-print("✅ Results saved to 'pyhsi_results.csv'")
+# print("✅ Results saved to 'pyhsi_results.csv'")
