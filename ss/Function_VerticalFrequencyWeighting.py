@@ -371,6 +371,7 @@ def local_sensitivity_from_file(
 
     # ---- load and baseline ----
     accel = _load_trial_series(file_path, trial_index=trial_index)
+    print(accel)
     m0 = _metrics_no_plots(accel, fs, **base_params)
     y0 = np.array([m0[k] for k in metrics_to_track], dtype=float)
 

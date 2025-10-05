@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 
-from Function_VerticalFrequencyWeighting import (
+# USING _PYHSI VERSION
+from Function_VerticalFrequencyWeighting_pyhsi import (
     analyze_vibration,
     local_sensitivity_from_file,
     tornado_grid_elasticity,
@@ -10,7 +11,7 @@ from Function_VerticalFrequencyWeighting import (
 # A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
 # CHOOSE WEIGHTING CURVE PARAMETERS HERE
 [t, acc_unw, acc_w, t_rms, rms_run_unw, rms_run_w, df_metrics] = analyze_vibration(
-    file_path="results_500mc_trial_matrix.csv", # results_500mc_trial_matrix
+    file_path="pyhsi_results.csv", # results_500mc_trial_matrix
     low_gain=0.40,
     f_low=0.5,
     f_mid_start=2.0,

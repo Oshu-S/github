@@ -15,14 +15,14 @@ height = 0.6  # h - Height (m)
 E = 200e9  # E - Young's modulus (N/m^2)
 modalDampingRatio = 0.005  # xi - Modal damping ratio of the beam
 nHigh = 3  # nHigh - Higher mode for damping matrix
-beamFreq =2 #Hz
+beamFreq = 2 #Hz
 area = 0.3162  # A - Cross-section area (m^2)
 linearMass = 500  # m - Linear mass (kg/m)
 x_interested= length/2
 numbers = 3
 #ped
 numped = 1
-pedmass = 80     #kg
+pedmass = 70.3     #kg
 peddamp = .3    
 #pedstiff = 25000 #N/m
 pedpace  = 2     #Hz
@@ -125,15 +125,15 @@ plt.show()
 #print("accn",accn)
 
 
-# # Create a DataFrame for exporting
-# import pandas as pd
-# df = pd.DataFrame({
-#     "Time (s)": t,
-#     "Acceleration Without HSI (m/s²)": accn,
-#     "Acceleration With HSI (m/s²)": accn_hsi
-# })
+# Create a DataFrame for exporting
+import pandas as pd
+df = pd.DataFrame({
+    "Time (s)": t,
+    "Acceleration Without HSI (m/s²)": accn,
+    "Acceleration With HSI (m/s²)": accn_hsi
+})
 
-# # Save to CSV
-# df.to_csv(r"C:\Users\Admin\OneDrive\Documents\Monash stuff\Year 5\FYP\github\pyhsi_results.csv", index=False)
+# Save to CSV
+df.to_csv(r"C:\Users\Admin\OneDrive\Documents\Monash stuff\Year 5\FYP\github\pyhsi_results.csv", index=False)
 
-# print("✅ Results saved to 'pyhsi_results.csv'")
+print("✅ Results saved to 'pyhsi_results.csv'")

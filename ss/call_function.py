@@ -1,11 +1,16 @@
-from analyze_vibration import analyze_vibration
-from local_sensitivity import local_sensitivity, tornado_grid_elasticity
-from plot_sweep_multi_metric import plot_sweep_multi_metric
+import matplotlib.pyplot as plt
+
+from Function_VerticalFrequencyWeighting import (
+    analyze_vibration,
+    local_sensitivity_from_file,
+    tornado_grid_elasticity,
+    plot_sweep_multi_metric,  
+)
 # ====================================================
 # A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
 # CHOOSE WEIGHTING CURVE PARAMETERS HERE
 [t, acc_unw, acc_w, t_rms, rms_run_unw, rms_run_w, df_metrics] = analyze_vibration(
-    file_path="pyhsi_results.csv", # results_500mc_trial_matrix
+    file_path="results_500mc_trial_matrix.csv", # results_500mc_trial_matrix
     low_gain=0.40,
     f_low=0.5,
     f_mid_start=2.0,
@@ -20,8 +25,10 @@ base = dict(low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=
 
 # Elasticity & Partial derivatives
 # CHOOSE % CHANGE IN PARAMETER FOR ELASTICITIES HERE
-df_elast, df_dydp = local_sensitivity(
-    file_path="pyhsi_results.csv",
+df_elast, df_dydp = local_sensitivity_from_file(
+    file_path="results_500mc_trial_matrix.csv",
+    trial_index=0,
+    fs=100,
     base_params=base,
     rel_step=0.05 # ±0.05 = ±5% change in parameter
     # metrics_to_track optional — default is all 7 weighted metrics
@@ -44,25 +51,40 @@ tornado_grid_elasticity(
 # Plot sweep to see % change in metrics as one weighting curve parameter is swept
 # CHOOSE PARAMETER, RANGE, AND METRICS TO PLOT HERE
 plot_sweep_multi_metric(
-    file_path="pyhsi_results.csv",
+    file_path="results_500mc_trial_matrix.csv",
+    trial_index=0,
+    fs=100,
     base_params=base,
     param_name="low_gain", # CHOOSE PARAMETER TO SWEEP
     param_range=(0.1, 1.0), # CHOOSE RANGE TO SWEEP (Units: Magnitude (m/s²) or Hz)
-    samples=16, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
+    samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
     # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
     metrics=["RMS acceleration"], # ["Peak acceleration","RMS acceleration","MTVV","MTVV*√2","CF","VDV","R"],
     show_legend=False,
+
 )
 
-plot_sweep_multi_metric(
-    file_path="pyhsi_results.csv",
-    base_params=base,
-    param_name="f_mid_start", # CHOOSE PARAMETER TO SWEEP
-    param_range=(0.5, 5.0), # CHOOSE RANGE TO SWEEP (Units: Magnitude (m/s²) or Hz)
-    samples=16, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
-    # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
-    metrics=["RMS acceleration"], # ["Peak acceleration","RMS acceleration","MTVV","MTVV*√2","CF","VDV","R"],
-    show_legend=False,
-)
-
-
+# # Checking linearity of f_mid_start
+# for h in [1.9,2.0,2.1]:
+#     df_E, _ = local_sensitivity_from_file(
+#         file_path="results_500mc_trial_matrix.csv",
+#         base_params=base,
+#         rel_step=h,
+#         metrics_to_track=("RMS_weighted",),
+#         print_elast=False,
+#         print_dydp=False,
+#     )
+#     print("f_mid_start=" + str(h) + "Hz; E(RMS/f_mid_start)=" + str(float(df_E.loc["f_mid_start", "RMS_weighted"])))
+    
+# plot_sweep_multi_metric(
+#     file_path="results_500mc_trial_matrix.csv",
+#     trial_index=0,
+#     fs=100,
+#     base_params=base,
+#     param_name="f_mid_start", # CHOOSE PARAMETER TO SWEEP
+#     param_range=(1.9, 2.1), # CHOOSE RANGE TO SWEEP (Units: Magnitude (m/s²) or Hz)
+#     samples=11, # Controls how many points are taken in sweep (how fine the resolution is) --> number of equally spaced points in the range
+#     # CHOOSE METRICS TO PLOT. metrics=None, # Default is all 7 weighted metrics
+#     metrics=["RMS acceleration"], # ["Peak acceleration","RMS acceleration","MTVV","MTVV*√2","CF","VDV","R"],
+#     show_legend=False,
+# )
