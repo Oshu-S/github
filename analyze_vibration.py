@@ -14,7 +14,7 @@ from tabulate import tabulate
 # f_flat_end: Position of end of flat, most sensitive region (Hz)
 
 # If when function is called, the user does not specify the parameters, the default values will be used.
-def analyze_vibration(file_path, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0):
+def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0):
     def _validate_breakpoints(low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
         eps = 1e-6
         f_low       = max(eps, f_low)
@@ -31,7 +31,7 @@ def analyze_vibration(file_path, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid
     # Load data
     # Read CSV (use utf-8 to be safe with the superscript ²)
     df = pd.read_csv(file_path, encoding="utf-8")
-    accel_data = df["Acceleration With HSI (m/s²)"].to_numpy()
+    accel_data = df[trial].to_numpy()
     # t = df["Time (s)"].to_numpy()
 
     accel_mean = np.mean(accel_data)

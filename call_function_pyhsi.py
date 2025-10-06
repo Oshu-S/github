@@ -6,12 +6,14 @@ from plot_sweep_multi_metric import plot_sweep_multi_metric
 # CHOOSE WEIGHTING CURVE PARAMETERS HERE
 [t, acc_unw, acc_w, t_rms, rms_run_unw, rms_run_w, df_metrics] = analyze_vibration(
     file_path="pyhsi_results.csv", # results_500mc_trial_matrix
+    trial="Acceleration With HSI (m/s²)", #"Acceleration Without HSI (m/s²)"
     low_gain=0.40,
     f_low=0.5,
     f_mid_start=2.0,
     f_mid_end=5.0,
     f_flat_end=16.0
 )
+
 
 # ====================================================
 # B) Local derivative-based sensitivity using central finite differences & elasticities at baseline
