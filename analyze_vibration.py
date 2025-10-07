@@ -14,7 +14,7 @@ from tabulate import tabulate
 # f_flat_end: Position of end of flat, most sensitive region (Hz)
 
 # If when function is called, the user does not specify the parameters, the default values will be used.
-def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0):
+def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0, log_ramp=True):
     def _validate_breakpoints(low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
         eps = 1e-6
         f_low       = max(eps, f_low)
@@ -46,7 +46,7 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     freq_vector = fftfreq(n, d=dt)
     acc_fft = fft(acceleration)
     magnitude = np.abs(acc_fft) / n
-
+    
     # 2) Weighting on positive freqs
     positive_freqs = freq_vector[:n//2 + 1]
     positive_freqs = np.maximum(positive_freqs, 0)  # clamp any small negatives to 0
@@ -55,40 +55,51 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     val_low = low_gain
     val_flat = 1.0
     f_flat_start = f_mid_end
-
+    
+    # seg 0: 0..f_low (linear rise to low plateau)
     mask_0 = (positive_freqs > 0.0) & (positive_freqs < f_low)
     W[mask_0] = val_low * (positive_freqs[mask_0] / f_low)
-
+    
+    # seg 1: f_low..f_mid_start (low plateau)
     mask_1 = (positive_freqs >= f_low) & (positive_freqs <= f_mid_start)
     W[mask_1] = val_low
 
+    # seg 2: f_mid_start..f_mid_end (ramp up to 1.0)
     mask_2 = (positive_freqs > f_mid_start) & (positive_freqs <= f_mid_end)
-    if f_mid_end > f_mid_start:
-        W[mask_2] = val_low + (val_flat - val_low) * (
-            (positive_freqs[mask_2] - f_mid_start) / (f_mid_end - f_mid_start)
-        )
-    else:
-        W[mask_2] = val_low
+    if np.any(mask_2):
+        if log_ramp:
+            # power-law ramp so it is straight on a log–log plot:
+            # W = val_low * (f / f_mid_start) ** alpha
+            alpha = np.log(val_flat / val_low) / np.log(f_mid_end / f_mid_start)
+            W[mask_2] = val_low * (positive_freqs[mask_2] / f_mid_start) ** alpha
+        else:
+            # linear-in-frequency ramp (will look slightly curved on log–log)
+            W[mask_2] = val_low + (val_flat - val_low) * (
+                (positive_freqs[mask_2] - f_mid_start) / (f_mid_end - f_mid_start)
+            )
 
+    # seg 3: f_flat_start..f_flat_end (flat at 1.0)
     mask_3 = (positive_freqs > f_flat_start) & (positive_freqs <= f_flat_end)
     W[mask_3] = val_flat
 
+    # seg 4: > f_flat_end (≈ 1/f roll-off, 6 dB/oct)
     mask_4 = (positive_freqs > f_flat_end)
     W[mask_4] = val_flat * f_flat_end / positive_freqs[mask_4]
 
-    # Mirror weights to full spectrum
-    weights = np.ones_like(freq_vector)
-    weights[:n//2 + 1] = W
-    if n % 2 == 0:
-        weights[n//2 + 1:] = W[1:n//2][::-1]
-    else:
+    # Mirror weights to full spectrum --> magnitude spectrum is symmetric --> |X(f)| = |X(-f)| --> Mirror the positive half of the weighting function to the negative side of the FFT before applying it.
+    weights = np.ones_like(freq_vector) # same size as the FFT frequency vector (positive + negative frequencies)
+    weights[:n//2 + 1] = W # first half of frequencies --> positive frequencies (0 Hz to Nyquist) → Fill the first half (DC to Nyquist) with the computed weighting curve W(f)
+    if n % 2 == 0: # if n is even, the FFT has a unique Nyquist frequency at n/2 → Copy everything except DC (index 0) and Nyquist (n//2), then reverse it ([::-1]) to mirror the weighting.
+        weights[n//2 + 1:] = W[1:n//2][::-1] 
+    else: # if n is odd, there is no unique Nyquist frequency → Copy everything except DC (index 0), then reverse it to mirror the weighting.
         weights[n//2 + 1:] = W[1:(n//2)+1][::-1]
+    # This ensures the weighting function is symmetric about 0 Hz: W(-f) = W(f)
 
     # 3) Apply weighting in freq domain
-    weighted_fft = acc_fft * weights
-    weighted_signal = np.real(ifft(weighted_fft))
+    weighted_fft = acc_fft * weights # weighted magnitude spectrum in freq domain but is complex-valued (negative frequencies too)
+    weighted_signal = np.real(ifft(weighted_fft)) # weighted acceleration in time domain
 
-    weighted_magnitude = np.abs(weighted_fft) / n
+    weighted_magnitude = np.abs(weighted_fft) / n # weighted magnitude spectrum (positive + negative frequencies)
     weighted_magnitude_pos = weighted_magnitude[:n//2 + 1]
 
     # --------- METRICS ----------
@@ -133,21 +144,20 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
         "VDV (m/s^1.75)":    [vdv_unw, vdv_w],
         "R":                 [R_unw, R_w]
     }
-    
+
     # --------- PLOTS ----------
     # Frequency weighting
     plt.figure(figsize=(10, 5))
-    mask = positive_freqs > 0    
-    plt.loglog(positive_freqs[mask], W[mask], label="Apply to acceleration data in units of m/s²")
+    mask = positive_freqs > 0 # avoid plotting the zero frequency point (0 Hz) on log-log scale since log(0)→−∞
+    plt.loglog(positive_freqs[mask], W[mask]) 
     octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
     plt.xticks(octave_centers, [str(f) for f in octave_centers])
     # Comment out if you want to hover over y-axis values
-    plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
+    # plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Frequency Weighting")
     plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.legend()
     plt.tight_layout()
 
     # --- PLOT: Running 1 s RMS vs time (centered timestamps) ---
