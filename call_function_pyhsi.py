@@ -3,6 +3,7 @@ from local_sensitivity import local_sensitivity, tornado_grid_elasticity
 from plot_sweep_multi_metric import plot_sweep_multi_metric
 from plot_frequency_weighting import plot_frequency_weighting
 from matplotlib import pyplot as plt
+import numpy as np
 
 f1, W1 = plot_frequency_weighting(
     low_gain=0.4,
@@ -22,7 +23,7 @@ f1, W1 = plot_frequency_weighting(
 )
 
 f2, W2 = plot_frequency_weighting(
-    low_gain=0.3,
+    low_gain=0.2,
     f_low=0.5,
     f_mid_start=2.0,
     f_mid_end=5.0,
@@ -31,7 +32,7 @@ f2, W2 = plot_frequency_weighting(
     fmin=0.016, fmax=63.0, n_points=2000,
     # shape controls
     log_ramp=True,             # ramp (f_mid_start → f_mid_end) straight on log–log
-    tail_exponent=3.0,         # high-freq slope: W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
+    tail_exponent=1.0,         # high-freq slope: [-dB/octave] --> W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
     tail_db_per_oct=None,      # optional: override beta using desired |dB/oct| (e.g., 6, 9, 12)
     # visuals
     show_knots=False, plot=False,
@@ -44,23 +45,30 @@ plt.loglog(f2, W2, label="Curve 2")
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Frequency Weighting")
 plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
+octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
+plt.xticks(octave_centers, [str(f) for f in octave_centers])
+# Comment out if you want to hover over y-axis values
+plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
+plt.xlim(0.016, 63)
+plt.ylim(0.005, 1.5)
 plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 plt.legend()
 plt.tight_layout()
 plt.show()
 
-# # ====================================================
-# # A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
-# # CHOOSE WEIGHTING CURVE PARAMETERS HERE
-# [t, acc_unw, acc_w, t_rms, rms_run_unw, rms_run_w, df_metrics] = analyze_vibration(
-#     file_path="pyhsi_results.csv", # og_data --> keep the same trial="Acceleration With HSI (m/s²)" below
-#     trial="Acceleration With HSI (m/s²)", #"Acceleration Without HSI (m/s²)"
-#     low_gain=0.40,
-#     f_low=0.5,
-#     f_mid_start=1,
-#     f_mid_end=5.0,
-#     f_flat_end=16.0
-# )
+# ====================================================
+# A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
+# CHOOSE WEIGHTING CURVE PARAMETERS HERE
+[t, acc_unw, acc_w, t_rms, rms_run_unw, rms_run_w, df_metrics] = analyze_vibration(
+    file_path="pyhsi_results.csv", # og_data --> keep the same trial="Acceleration With HSI (m/s²)" below
+    trial="Acceleration With HSI (m/s²)", #"Acceleration Without HSI (m/s²)"
+    low_gain=0.40,
+    f_low=0.5,
+    f_mid_start=2.0,
+    f_mid_end=5.0,
+    f_flat_end=16.0,
+    tail_exponent=1.0
+)
 
 # # ====================================================
 # # B) Local derivative-based sensitivity using central finite differences & elasticities at baseline

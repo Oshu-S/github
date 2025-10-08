@@ -14,7 +14,7 @@ from tabulate import tabulate
 # f_flat_end: Position of end of flat, most sensitive region (Hz)
 
 # If when function is called, the user does not specify the parameters, the default values will be used.
-def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0, log_ramp=True):
+def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0, tail_exponent=1.0, log_ramp=True):
     def _validate_breakpoints(low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
         eps = 1e-6
         f_low       = max(eps, f_low)
@@ -84,7 +84,7 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
 
     # seg 4: > f_flat_end (≈ 1/f roll-off, 6 dB/oct)
     mask_4 = (positive_freqs > f_flat_end)
-    W[mask_4] = val_flat * f_flat_end / positive_freqs[mask_4]
+    W[mask_4] = (val_flat * f_flat_end / positive_freqs[mask_4]) ** tail_exponent
 
     # Mirror weights to full spectrum --> magnitude spectrum is symmetric --> |X(f)| = |X(-f)| --> Mirror the positive half of the weighting function to the negative side of the FFT before applying it.
     weights = np.ones_like(freq_vector) # same size as the FFT frequency vector (positive + negative frequencies)

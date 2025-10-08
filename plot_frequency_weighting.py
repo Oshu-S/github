@@ -84,6 +84,10 @@ def plot_frequency_weighting(
         plt.loglog(f, W)
         plt.xlabel("Frequency (Hz)")
         plt.ylabel("Frequency Weighting")
+        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
+        plt.xticks(octave_centers, [str(f) for f in octave_centers])
+        # Comment out if you want to hover over y-axis values
+        # plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
         plt.title(title)
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 
