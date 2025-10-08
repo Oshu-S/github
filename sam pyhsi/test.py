@@ -8,28 +8,28 @@ import numpy as np
 
 #step 1 setup beam and pedestrians
 #beam
-numElements = 10  # n - Number of beam elements !not for modal
+# numElements = 10  # n - Number of beam elements !not for modal
 length = 50  # L - Length (m)
 width = 2  # b - Width (m)
 height = 0.6  # h - Height (m)
 E = 200e9  # E - Young's modulus (N/m^2)
-modalDampingRatio = 0.005  # xi - Modal damping ratio of the beam
+modalDampingRatio = 0.005 # xi - Modal damping ratio of the beam
 nHigh = 3  # nHigh - Higher mode for damping matrix
 beamFreq = 2 #Hz
 area = 0.3162  # A - Cross-section area (m^2)
 linearMass = 500  # m - Linear mass (kg/m)
-x_interested= length/2
-numbers = 3
+x_interested = length/2
+numbers = 3 # number of modes to be considered
 #ped
 numped = 1
 pedmass = 70.3     #kg
-peddamp = .3    
-#pedstiff = 25000 #N/m
+peddamp =  0.3 # higher --> more energy feedback from human body
+# pedstiff = 25000 #N/m --> higher stiffness introduces nonlinear coupling
 pedpace  = 2     #Hz
 pedphase = 0
 pedInlocation = 0
 pedvelocity = 1.25
-pedBodyF= 2 #Hz
+pedBodyF = 2 #Hz
 
 #ped
 kped=(2*np.pi*pedBodyF)**2*pedmass
@@ -55,15 +55,15 @@ Bridge = bridge(
     length = length,                 # m
     modulus = modulus,               # N m^2
     density = linearMass,            # kg/m
-    damp    = modalDampingRatio ,    #%
-    numbers = 3,  )                   #modes
+    damp    = modalDampingRatio ,    # %
+    numbers = numbers,  )            # modes
 
 
 Human = Pedestrian(
-         mass = pedmass,     #kg
+         mass = pedmass,    #kg
          damp = peddamp ,   #%
-         stiff = kped, #N/m
-         pace  = pedpace ,    #Hz
+         stiff = kped,      #N/m
+         pace  = pedpace,   #Hz
          phase = pedphase,
          location = pedInlocation,
          velocity = pedvelocity,
@@ -75,23 +75,30 @@ u,du,ddu_hsi = Newmarksuper_HSI (Human,Bridge,numped,numbers,length,hht,pedveloc
 accn_hsi = accdyn_super(Bridge,ddu_hsi,x_interested,hht)
 #vertical_displacement = accdyn_super(Bridge,u,25,hht)
 
-# --- FFT of "with HSI" acceleration (accn_hsi) ---
+u,du,ddu = Newmarksuper_HSI (Human,Bridge,numped,numbers,length,hht,pedvelocity,mped,[0],[0],xrb,linearMass)
+                
+accn = accdyn_super(Bridge,ddu,x_interested,hht)
+
+# --- FFT of "with/without HSI" acceleration (accn_hsi/accn) ---
 import numpy as np
 import matplotlib.pyplot as plt
 
 # Sampling info
 dt = hht                     # your time step (0.01 s)
-fs = 1.0 / dt
+fs = 1.0 / hht
 n  = len(accn_hsi)
 
 # (Recommended) remove DC before FFT
-x = accn_hsi - np.mean(accn_hsi)
+x_hsi = accn_hsi - np.mean(accn_hsi)
+x = accn - np.mean(accn)
 
 # One-sided spectrum (rfft) → frequencies 0..fs/2
 freqs = np.fft.rfftfreq(n, d=dt)
+X_hsi = np.fft.rfft(x_hsi)
 X = np.fft.rfft(x)
 
 # Amplitude spectrum (m/s^2) — normalized by n
+amp_hsi = np.abs(X_hsi) / n
 amp = np.abs(X) / n
 
 # Optional: convert to amplitude spectral density (per √Hz)
@@ -99,17 +106,15 @@ amp = np.abs(X) / n
 
 # Plot
 plt.figure(figsize=(9,4.5))
-plt.plot(freqs, amp, lw=1.2)
+plt.plot(freqs, amp, lw=1.2, label="without HSI")
+plt.plot(freqs, amp_hsi, lw=1.2, label="with HSI")
 plt.xlabel("Frequency (Hz)")
 plt.ylabel("Amplitude (m/s²)")
-plt.title("FFT Amplitude Spectrum — With HSI")
+plt.title("FFT Amplitude Spectrum")
 plt.xlim(0, fs/2)           # show up to Nyquist
 plt.grid(True, ls="--", lw=0.5)
 plt.tight_layout()
-
-u,du,ddu = Newmarksuper_HSI (Human,Bridge,numped,numbers,length,hht,pedvelocity,mped,[0],[0],xrb,linearMass)
-                
-accn = accdyn_super(Bridge,ddu,x_interested,hht)
+plt.legend()
 
 t = np.arange(0, (length+1) / pedvelocity, hht)
 plt.figure(figsize=(9,4.5))
