@@ -14,7 +14,7 @@ from tabulate import tabulate
 # f_flat_end: Position of end of flat, most sensitive region (Hz)
 
 # If when function is called, the user does not specify the parameters, the default values will be used.
-def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0, tail_exponent=1.0, log_ramp=True):
+def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0, tail_exponent=1.0, log_ramp=True, show_knots=True):
     def _validate_breakpoints(low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
         eps = 1e-6
         f_low       = max(eps, f_low)
@@ -84,7 +84,7 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
 
     # seg 4: > f_flat_end (≈ 1/f roll-off, 6 dB/oct)
     mask_4 = (positive_freqs > f_flat_end)
-    W[mask_4] = (val_flat * f_flat_end / positive_freqs[mask_4]) ** tail_exponent
+    W[mask_4] = val_flat * (f_flat_end / positive_freqs[mask_4]) ** tail_exponent
 
     # Mirror weights to full spectrum --> magnitude spectrum is symmetric --> |X(f)| = |X(-f)| --> Mirror the positive half of the weighting function to the negative side of the FFT before applying it.
     weights = np.ones_like(freq_vector) # same size as the FFT frequency vector (positive + negative frequencies)
@@ -147,18 +147,33 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
 
     # --------- PLOTS ----------
     # Frequency weighting
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(9, 5))
     mask = positive_freqs > 0 # avoid plotting the zero frequency point (0 Hz) on log-log scale since log(0)→−∞
     plt.loglog(positive_freqs[mask], W[mask]) 
     octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
     plt.xticks(octave_centers, [str(f) for f in octave_centers])
     # Comment out if you want to hover over y-axis values
-    # plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
+    plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
     plt.xlabel("Frequency (Hz)")
     plt.ylabel("Frequency Weighting")
-    plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
+    # plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.tight_layout()
+    
+    if show_knots:
+        # vertical knots for frequency breakpoints
+        for x, lab in [(f_low, "fLow"), (f_mid_start, "fMidStart"),
+                    (f_mid_end, "fMidEnd"), (f_flat_end, "fFlatEnd")]:
+            plt.axvline(x, ls="--", lw=1.0, color="r", alpha=0.6)
+            ylab = max(np.min(W[W > 0]), 1e-3)
+            plt.text(x, 1.1 * ylab, lab, color="r",
+                    rotation=90, va="bottom", ha="right", fontsize=10)
+
+        # horizontal knot for lowGain (place label near the left x-limit actually used)
+        x_left = float(np.min(positive_freqs[mask])) if np.any(mask) else f_low
+        plt.axhline(low_gain, ls="--", lw=1.0, color="g", alpha=0.6)
+        plt.text(x_left * 1.1, low_gain * 1.05, "lowGain", color="g",
+                va="bottom", ha="left", fontsize=10)
 
     # --- PLOT: Running 1 s RMS vs time (centered timestamps) ---
     # For mode='valid', the i-th value corresponds to samples [i, i+win-1].
