@@ -76,9 +76,9 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-# ====================================================
-# A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
-# CHOOSE WEIGHTING CURVE PARAMETERS HERE
+# # ====================================================
+# # A) Apply vertical frequency weighting + analyze weighted and unweighted metrics
+# # CHOOSE WEIGHTING CURVE PARAMETERS HERE
 # [t, acc_unw, acc_w, t_rms, rms_run_unw, rms_run_w, df_metrics] = analyze_vibration(
 #     file_path="pyhsi_results.csv", # og_data --> keep the same trial="Acceleration With HSI (m/s²)" below
 #     trial="Acceleration With HSI (m/s²)", #"Acceleration Without HSI (m/s²)"
