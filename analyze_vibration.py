@@ -149,7 +149,7 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     # Frequency weighting
     mask = positive_freqs > 0 # avoid plotting the zero frequency point (0 Hz) on log-log scale since log(0)→−∞
     if plot:
-        plt.figure(figsize=(9, 4.5))
+        plt.figure(figsize=(8, 4.5))
         plt.loglog(positive_freqs[mask], W[mask]) 
         octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
         plt.xticks(octave_centers, [str(f) for f in octave_centers])
@@ -168,7 +168,7 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
                 plt.axvline(x, ls="--", lw=1.0, color="r", alpha=0.6)
                 ylab = max(np.min(W[W > 0]), 1e-3)
                 plt.text(x, 1.1 * ylab, lab, color="r",
-                        rotation=90, va="bottom", ha="right", fontsize=15)
+                        rotation=90, va="bottom", ha="right", fontsize=14)
 
         # horizontal knot for lowGain (place label near the left x-limit actually used)
         x_left = float(np.min(positive_freqs[mask])) if np.any(mask) else f_low
