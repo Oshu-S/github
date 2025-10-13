@@ -13,6 +13,7 @@ def local_sensitivity(
     metrics_to_track=None, # ← default None => all 7 weighted metrics
     print_elast=None,
     print_dydp=None,
+    print_pct=None
 ):
     """
     Computes one-at-a-time sensitivities at baseline using symmetric finite differences.
@@ -105,7 +106,7 @@ def local_sensitivity(
     # 1) Elasticity (dimensionless) – pretty metric names
     if print_elast is None:
         df_elast_pretty = df_elasticity.rename(columns=metric_pretty)
-        df_elast_print  = df_elast_pretty.round(6).replace({np.nan: ""})
+        df_elast_print  = df_elast_pretty.round(5).replace({np.nan: ""})
         print("\nElasticity (%ΔMetric / %ΔParameter) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
         print(tabulate(df_elast_print, headers="keys", tablefmt="grid", numalign="center", stralign="center"))
 
@@ -118,13 +119,24 @@ def local_sensitivity(
         df_dydp_u = df_dydp.rename(columns=col_with_units).copy()
         df_dydp_u.index = list(df_dydp.index)  # raw param names only (no units)
 
-        df_dydp_print = df_dydp_u.round(6).replace({np.nan: ""})
+        df_dydp_print = df_dydp_u.round(5).replace({np.nan: ""})
         # print("\nPartial derivatives (∂M/∂P) when curve parameter is perturbed by ±" + str(rel_step*100)  +  "%:")
         # print(tabulate(df_dydp_print, headers="keys", tablefmt="grid",
         #             numalign="center", stralign="center"))
+    
+    # --- Approximate % change in metrics (using elasticity * rel_step * 100)
+    pct_change_mat = elast_mat * (rel_step * 100)
+    df_pct_change = pd.DataFrame(pct_change_mat, index=param_order, columns=metrics_to_track)
+
+    if print_pct is None:
+        df_pct_pretty = df_pct_change.rename(columns=metric_pretty)
+        print(f"\nApproximate % change in metrics for ±{rel_step*100:.1f}% parameter perturbation (Elasticity × {rel_step*100:.1f}%):")
+        print(tabulate(df_pct_pretty.round(5).replace({np.nan: ""}),
+                    headers="keys", tablefmt="grid",
+                    numalign="center", stralign="center"))
 
     # Return programmatic frames (without prettified labels) for plotting/saving
-    return df_elasticity, df_dydp
+    return df_elasticity, df_dydp, df_pct_change
 
 # ====================================================
 # Tornado plots for local elasticities

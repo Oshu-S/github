@@ -14,7 +14,7 @@ from tabulate import tabulate
 # f_flat_end: Position of end of flat, most sensitive region (Hz)
 
 # If when function is called, the user does not specify the parameters, the default values will be used.
-def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0, tail_exponent=1.0, log_ramp=True, show_knots=True):
+def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0, tail_exponent=1.0, log_ramp=True, show_knots=True, plot=True):
     def _validate_breakpoints(low_gain, f_low, f_mid_start, f_mid_end, f_flat_end):
         eps = 1e-6
         f_low       = max(eps, f_low)
@@ -147,32 +147,33 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
 
     # --------- PLOTS ----------
     # Frequency weighting
-    plt.figure(figsize=(9, 5))
     mask = positive_freqs > 0 # avoid plotting the zero frequency point (0 Hz) on log-log scale since log(0)→−∞
-    plt.loglog(positive_freqs[mask], W[mask]) 
-    octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
-    plt.xticks(octave_centers, [str(f) for f in octave_centers])
-    # Comment out if you want to hover over y-axis values
-    plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Frequency Weighting")
-    # plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
-    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.tight_layout()
-    
-    if show_knots:
-        # vertical knots for frequency breakpoints
-        for x, lab in [(f_low, "fLow"), (f_mid_start, "fMidStart"),
-                    (f_mid_end, "fMidEnd"), (f_flat_end, "fFlatEnd")]:
-            plt.axvline(x, ls="--", lw=1.0, color="r", alpha=0.6)
-            ylab = max(np.min(W[W > 0]), 1e-3)
-            plt.text(x, 1.1 * ylab, lab, color="r",
-                    rotation=90, va="bottom", ha="right", fontsize=10)
+    if plot:
+        plt.figure(figsize=(9, 4.5))
+        plt.loglog(positive_freqs[mask], W[mask]) 
+        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
+        plt.xticks(octave_centers, [str(f) for f in octave_centers])
+        # Comment out if you want to hover over y-axis values
+        plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 1.5], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "1.5"])
+        plt.xlabel("Frequency (Hz)")
+        plt.ylabel("Frequency Weighting")
+        # plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+        plt.tight_layout()
+    if plot:
+        if show_knots:
+            # vertical knots for frequency breakpoints
+            for x, lab in [(f_low, r"$\it{f_{low}}$"), (f_mid_start, r"$\it{f_{midStart}}$"),
+                        (f_mid_end, r"$\it{f_{midEnd}}$"), (f_flat_end, r"$\it{f_{flatEnd}}$")]:
+                plt.axvline(x, ls="--", lw=1.0, color="r", alpha=0.6)
+                ylab = max(np.min(W[W > 0]), 1e-3)
+                plt.text(x, 1.1 * ylab, lab, color="r",
+                        rotation=90, va="bottom", ha="right", fontsize=15)
 
         # horizontal knot for lowGain (place label near the left x-limit actually used)
         x_left = float(np.min(positive_freqs[mask])) if np.any(mask) else f_low
         plt.axhline(low_gain, ls="--", lw=1.0, color="g", alpha=0.6)
-        plt.text(x_left * 1.1, low_gain * 1.05, "lowGain", color="g",
+        plt.text(x_left * 1.1, low_gain * 1.05, r"$\it{lowGain}$", color="g",
                 va="bottom", ha="left", fontsize=10)
 
     # --- PLOT: Running 1 s RMS vs time (centered timestamps) ---
@@ -181,20 +182,21 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     Lr = len(rms_running_weighted)
     t_rms = np.arange(Lr) / fs + (window_size - 1) / (2.0 * fs)
     
-    # Time histories/Running 1 s RMS (unweighted)
-    plt.figure(figsize=(8, 6))
-    plt.plot(t, acceleration, label="Acceleration (unweighted)")
-    plt.plot(t_rms, rms_running_unweighted, label="Running RMS (1 s) (unweighted)")
-    plt.plot(t, weighted_signal, label="Acceleration (weighted)")
-    plt.plot(t_rms, rms_running_weighted, label="Running RMS (1 s) (weighted)")
-    # plt.title("Time History of Unweighted Acceleration")
-    plt.xlabel("Time (s)")
-    plt.ylabel("Acceleration (m/s²)")
-    plt.yticks(np.arange(-1.2, 1.2, step=0.2))
-    plt.ylim(-1.1, 1.1)
-    plt.legend(loc='upper left')
-    plt.grid(True)
-    plt.tight_layout()
+    # Time histories/Running 1 s RMS
+    if plot:
+        plt.figure(figsize=(8, 6))
+        plt.plot(t, acceleration, label="Acceleration (unweighted)")
+        plt.plot(t_rms, rms_running_unweighted, label="Running RMS (1 s) (unweighted)")
+        plt.plot(t, weighted_signal, label="Acceleration (weighted)")
+        plt.plot(t_rms, rms_running_weighted, label="Running RMS (1 s) (weighted)")
+        # plt.title("Time History of Unweighted Acceleration")
+        plt.xlabel("Time (s)", fontsize=15)
+        plt.ylabel("Acceleration (m/s²)", fontsize=15)
+        plt.yticks(np.arange(-1.2, 1.2, step=0.2))
+        plt.ylim(-1.1, 1.1)
+        plt.legend(loc='lower left', fontsize=13)
+        plt.grid(True)
+        plt.tight_layout()
     
     # # Time histories/Running 1 s RMS (weighted)
     # plt.figure(figsize=(10, 5))
@@ -210,21 +212,23 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     # plt.tight_layout()
 
     # Spectra FFT (unweighted vs weighted)
-    plt.figure(figsize=(8, 6))
-    plt.plot(positive_freqs, positive_magnitude, label="Unweighted")
-    plt.plot(positive_freqs, weighted_magnitude_pos, label="Weighted")
-    # plt.title("FFT - Frequency Spectra")
-    plt.xlabel("Frequency (Hz)")
-    plt.ylabel("Amplitude (m/s²)")
-    plt.legend()
-    plt.xlim(0, 20)
-    # plt.ylim(0, 0.031)
-    plt.grid(True)
-    plt.tight_layout()
+    if plot:
+        plt.figure(figsize=(6, 4))
+        plt.plot(positive_freqs, positive_magnitude, label="Unweighted")
+        plt.plot(positive_freqs, weighted_magnitude_pos, label="Weighted")
+        # plt.title("FFT - Frequency Spectra")
+        plt.xlabel("Frequency (Hz)", fontsize=12)
+        plt.ylabel("Amplitude (m/s²)", fontsize=12)
+        plt.legend(fontsize=12)
+        plt.xticks(np.arange(0, 20, step=2))
+        plt.xlim(0, 20)
+        # plt.ylim(0, 0.031)
+        plt.grid(True)
+        plt.tight_layout()
     
     df_metrics = pd.DataFrame(metrics, index=["Unweighted", "Weighted"])
     print(tabulate(df_metrics.round(6), headers='keys', tablefmt='grid', numalign="center", stralign="center"))
-    
-    plt.show()
+    if plot:
+        plt.show()
 
-    return t, acceleration, weighted_signal, t_rms, rms_running_unweighted, rms_running_weighted, df_metrics
+    return t, acceleration, weighted_signal, t_rms, rms_running_unweighted, rms_running_weighted, df_metrics, positive_freqs, positive_magnitude, weighted_magnitude_pos

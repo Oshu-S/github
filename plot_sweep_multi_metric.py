@@ -47,11 +47,11 @@ def plot_sweep_multi_metric(
 
     # Parameter pretty labels (with units where relevant)
     param_pretty = {
-        "low_gain": "low_gain (dB)",
-        "f_low": "f_low (Hz)",
-        "f_mid_start": "f_mid_start (Hz)",
-        "f_mid_end": "f_mid_end (Hz)",
-        "f_flat_end": "f_flat_end (Hz)",
+        "low_gain": "lowGain (dB)",
+        "f_low": "fLow (Hz)",
+        "f_mid_start": "fMidStart (Hz)",
+        "f_mid_end": "fMidEnd (Hz)",
+        "f_flat_end": "fFlatEnd (Hz)",
     }
 
     # Accept a few common aliases for the sqrt(2) metric name
@@ -118,7 +118,7 @@ def plot_sweep_multi_metric(
     df = pd.DataFrame(rows).set_index("param_value")
     
     # ----- Plot ----- 
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots(figsize=(7,4.5))
     for raw_key in metrics_raw:
         if raw_key not in df.columns:
             continue
@@ -126,25 +126,46 @@ def plot_sweep_multi_metric(
 
     # Pretty param label
     xlab = param_pretty.get(param_name, param_name)
-    ax.set_xlabel(xlab)
+    ax.set_xlabel(xlab, fontsize=14)
 
     # If only one metric → use its pretty name
-    if len(metrics_raw) == 1:
-        pretty_name = pretty_metric(metrics_raw[0])
-        ax.set_ylabel(f"% change in {pretty_name} relative to baseline")
-        if title is None:
-            ax.set_title(f"% change in {pretty_name} vs {param_name}")
-        else:
-            ax.set_title(title)
+    ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to baseline", fontsize=14)
+
+    if title is None:
+        ax.set_title(f"% change in weighted RMS acceleration vs {xlab}")
+
+
     else:
-        ax.set_ylabel("% change in metrics relative to baseline")
+        ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to baseline")
         if title is None:
             ax.set_title(f"% change in selected metrics vs {xlab}")
-        else:
-            ax.set_title(title)
+
 
     ax.grid(True)
 
+    # --- Add vertical "knot" line at baseline parameter value ---
+    baseline_val = base_params[param_name]
+    # draw vertical dotted line
+    ax.axvline(baseline_val, color="r", linestyle="--", linewidth=1.0, alpha=0.8)
+
+    # create label with subscript 0
+    if param_name == "low_gain":
+        label_text = r"$\it{lowGain}_0$"
+    elif param_name == "f_low":
+        label_text = r"$\it{f_{low,0}}$"
+    elif param_name == "f_mid_start":
+        label_text = r"$\it{f_{midStart,0}}$"
+    elif param_name == "f_mid_end":
+        label_text = r"$\it{f_{midEnd,0}}$"
+    elif param_name == "f_flat_end":
+        label_text = r"$\it{f_{flatEnd,0}}$"
+    else:
+        label_text = rf"$\it{{{param_name}}}_0$"
+    # position label slightly above the plot bottom
+    ymin, ymax = ax.get_ylim()
+    ax.text(baseline_val, ymin + 0.1*(ymax - ymin), label_text,
+            color="r", fontsize=18, rotation=90,
+            va="bottom", ha="left", fontweight="bold")
 
     if show_legend:
         if legend_outside:
