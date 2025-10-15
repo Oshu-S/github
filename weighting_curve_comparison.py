@@ -3,6 +3,7 @@ from plot_frequency_weighting import plot_frequency_weighting
 from plot_contour import plot_equivalent_comfort_contour
 from matplotlib import pyplot as plt
 import numpy as np
+import math
 
 f1, W1 = plot_frequency_weighting(
     low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0,
@@ -24,7 +25,7 @@ f2, W2 = plot_frequency_weighting(
     fmin=0.016, fmax=63.0, n_points=2000,
     # shape controls
     log_ramp=True,             # ramp (f_mid_start → f_mid_end) straight on log–log
-    tail_exponent=3.0,         # high-freq slope: [-dB/octave] --> W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
+    tail_exponent=1.0,         # high-freq slope: [-dB/octave] --> W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
     tail_db_per_oct=None,      # optional: override beta using desired |dB/oct| (e.g., 6, 9, 12)
     # visuals
     show_knots=False, plot=False,
@@ -38,7 +39,7 @@ f3, W3 = plot_frequency_weighting(
     fmin=0.016, fmax=63.0, n_points=2000,
     # shape controls
     log_ramp=True,             # ramp (f_mid_start → f_mid_end) straight on log–log
-    tail_exponent=2.0,         # high-freq slope: W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
+    tail_exponent=1.0,         # high-freq slope: W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
     tail_db_per_oct=None,      # optional: override beta using desired |dB/oct| (e.g., 6, 9, 12)
     # visuals
     show_knots=False, plot=False,
@@ -61,70 +62,81 @@ f3, W3 = plot_frequency_weighting(
 #     plot=False
 # )
 
-plt.figure(figsize=(10, 5))
-plt.loglog(f1, W1, color="C0", ls="-.", linewidth=2, label="ISO 2631 ($W_k$)") # Baseline
-plt.loglog(f2, W2, color="C1", ls="--", linewidth=2,  label="Lower Bound (faster pacing)") # Lower Bound
-plt.loglog(f3, W3, color="C2", ls=":", linewidth=2, label="Upper Bound (slower pacing)") # Upper Bound
-# plt.plot(positive_freqs, FFT_unw, color="C3", linewidth=1.5, label="Unweighted footbridge signal (m/s²)")
-plt.xlabel("Frequency (Hz)", fontsize=16)
-plt.ylabel("Frequency Weighting", fontsize=16)
-octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
-plt.xticks(octave_centers, [str(f) for f in octave_centers], fontsize=12)
-# Comment out if you want to hover over y-axis values
-plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"], fontsize=12)
-plt.xlim(0.016, 63)
-plt.ylim(0.005, 1.5)
-plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-plt.legend(loc='lower left', bbox_to_anchor=(0.4, 0.05), fontsize=15, framealpha=1.0)
-plt.tight_layout()
-plt.show()
+# plt.figure(figsize=(10, 5))
+# plt.loglog(f1, W1, color="C0", ls="-.", linewidth=2, label="ISO 2631 ($W_k$)") # Baseline
+# plt.loglog(f2, W2, color="C1", ls="--", linewidth=2,  label="Lower Bound (faster pacing)") # Lower Bound
+# plt.loglog(f3, W3, color="C2", ls=":", linewidth=2, label="Upper Bound (slower pacing)") # Upper Bound
+# # plt.plot(positive_freqs, FFT_unw, color="C3", linewidth=1.5, label="Unweighted footbridge signal (m/s²)")
+# plt.xlabel("Frequency (Hz)", fontsize=16)
+# plt.ylabel("Frequency Weighting", fontsize=16)
+# octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
+# plt.xticks(octave_centers, [str(f) for f in octave_centers], fontsize=12)
+# # Comment out if you want to hover over y-axis values
+# plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"], fontsize=12)
+# plt.xlim(0.016, 63)
+# plt.ylim(0.005, 1.5)
+# plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+# plt.legend(loc='lower left', bbox_to_anchor=(0.4, 0.05), fontsize=15, framealpha=1.0)
+# plt.tight_layout()
+# plt.show()
 
 fc1, c1 = plot_equivalent_comfort_contour(
     low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0,
     # plotting domain
     fmin=0.016, fmax=63.0, n_points=2000,
-    # shape controls for W(f)
-    log_ramp=True,             # ramp (f_mid_start → f_mid_end) straight on log–log
-    tail_exponent=1.0,         # high-freq slope: W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
-    tail_db_per_oct=None,      # optional dB/oct override (e.g., 6, 9, 12) → sets beta
-    # vertical translation (applied to C = scale / W)
-    scale=-5.0,                 # linear multiplier for entire contour
-    offset_db=None,            # alternative: add this many dB to C (overrides scale)
-    normalize_at=None,         # optional: set C(f_ref)=target_at_ref (sets scale)
-    target_at_ref=1.0,
+    # shape controls
+    log_ramp=True,           # ramp (f_mid_start → f_mid_end) straight on log–log
+    tail_exponent=1.0,       # high-freq tail ~ 1 / f^tail_exponent (6 dB/oct ≈ 1.0)
+    # amplitude/anchoring (in acceleration units)
+    base_level=1.0,          # m/s² when W ≈ 1 (flat region)
+    target_point=(None),       # (f_target [Hz], a_target [m/s²]) → force contour through this point
     # visuals
     show_knots=True, plot=False,
-    title="Equivalent Comfort Contour (1 / Weighting)"
+    title="Equivalent Comfort Contour (acceleration)"
 )
 
 fc2, c2 = plot_equivalent_comfort_contour(
     low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0,
     # plotting domain
     fmin=0.016, fmax=63.0, n_points=2000,
-    # shape controls for W(f)
-    log_ramp=True,             # ramp (f_mid_start → f_mid_end) straight on log–log
-    tail_exponent=1.0,         # high-freq slope: W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
-    tail_db_per_oct=None,      # optional dB/oct override (e.g., 6, 9, 12) → sets beta
-    # vertical translation (applied to C = scale / W)
-    scale=-2.0,                 # linear multiplier for entire contour
-    offset_db=None,            # alternative: add this many dB to C (overrides scale)
-    normalize_at=None,         # optional: set C(f_ref)=target_at_ref (sets scale)
-    target_at_ref=1.0,
+    # shape controls
+    log_ramp=True,           # ramp (f_mid_start → f_mid_end) straight on log–log
+    tail_exponent=1.0,       # high-freq tail ~ 1 / f^tail_exponent (6 dB/oct ≈ 1.0)
+    # amplitude/anchoring (in acceleration units)
+    base_level=0.75,          # m/s² when W ≈ 1 (flat region)
+    target_point=None,       # (f_target [Hz], a_target [m/s²]) → force contour through this point
     # visuals
     show_knots=True, plot=False,
-    title="Equivalent Comfort Contour (1 / Weighting)"
+    title="Equivalent Comfort Contour (acceleration)"
+)
+
+fc3, c3 = plot_equivalent_comfort_contour(
+    low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0,
+    # plotting domain
+    fmin=0.016, fmax=63.0, n_points=2000,
+    # shape controls
+    log_ramp=True,           # ramp (f_mid_start → f_mid_end) straight on log–log
+    tail_exponent=1.0,       # high-freq tail ~ 1 / f^tail_exponent (6 dB/oct ≈ 1.0)
+    # amplitude/anchoring (in acceleration units)
+    base_level=0.5,          # m/s² when W ≈ 1 (flat region)
+    target_point=None,       # (f_target [Hz], a_target [m/s²]) → force contour through this point
+    # visuals
+    show_knots=True, plot=False,
+    title="Equivalent Comfort Contour (acceleration)"
 )
 
 plt.figure(figsize=(10, 5))
-plt.loglog(fc1, c1, color="C0", ls="-.", linewidth=2, label="ISO 2631 ($W_k$)") # Baseline
-plt.loglog(fc2, c2, color="C1", ls="--", linewidth=2,  label="Lower Bound (faster pacing)") # Lower Bound
+plt.loglog(fc1, c1, color="C0", ls="-.", linewidth=2, label="curve 1") # Baseline
+plt.loglog(fc2, c2, color="C1", ls="--", linewidth=2,  label="curve 2") # Lower Bound
+plt.loglog(fc3, c3, color="C2", ls=":", linewidth=2,  label="curve 3") # Lower Bound
+
 # plt.plot(positive_freqs, FFT_unw, color="C3", linewidth=1.5, label="Unweighted footbridge signal (m/s²)")
 plt.xlabel("Frequency (Hz)", fontsize=16)
-plt.ylabel("Frequency Weighting", fontsize=16)
+plt.ylabel("Acceleration ($m/s^2$)", fontsize=16)
 octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
 plt.xticks(octave_centers, [str(f) for f in octave_centers], fontsize=12)
 # Comment out if you want to hover over y-axis values
-plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"], fontsize=12)
+# plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"], fontsize=12)
 plt.xlim(0.016, 63)
 # plt.ylim(0.005, 1.5)
 plt.grid(True, which="both", linestyle="--", linewidth=0.5)
