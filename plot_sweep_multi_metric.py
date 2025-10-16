@@ -47,11 +47,11 @@ def plot_sweep_multi_metric(
 
     # Parameter pretty labels (with units where relevant)
     param_pretty = {
-        "low_gain": "lowGain (dB)",
-        "f_low": "fLow (Hz)",
-        "f_mid_start": "fMidStart (Hz)",
-        "f_mid_end": "fMidEnd (Hz)",
-        "f_flat_end": "fFlatEnd (Hz)",
+        "low_gain": "$w$ (dB)",
+        "f_low": "$f_1$ (Hz)",
+        "f_mid_start": "$f_2$ (Hz)",
+        "f_mid_end": "$f_3$ (Hz)",
+        "f_flat_end": "$f_4$ (Hz)",
     }
 
     # Accept a few common aliases for the sqrt(2) metric name
@@ -118,7 +118,7 @@ def plot_sweep_multi_metric(
     df = pd.DataFrame(rows).set_index("param_value")
     
     # ----- Plot ----- 
-    fig, ax = plt.subplots(figsize=(7,4.5))
+    fig, ax = plt.subplots(figsize=(6.5,4.5))
     for raw_key in metrics_raw:
         if raw_key not in df.columns:
             continue
@@ -129,14 +129,14 @@ def plot_sweep_multi_metric(
     ax.set_xlabel(xlab, fontsize=14)
 
     # If only one metric → use its pretty name
-    ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to baseline", fontsize=14)
+    ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to baseline", fontsize=15)
 
     if title is None:
         ax.set_title(f"% change in weighted RMS acceleration vs {xlab}")
 
 
     else:
-        ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to baseline")
+        ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to $a_\mathrm{RMS,0}$")
         if title is None:
             ax.set_title(f"% change in selected metrics vs {xlab}")
 
@@ -150,15 +150,15 @@ def plot_sweep_multi_metric(
 
     # create label with subscript 0
     if param_name == "low_gain":
-        label_text = r"$\it{lowGain}_0$"
+        label_text = "$w_0$"
     elif param_name == "f_low":
-        label_text = r"$\it{f_{low,0}}$"
+        label_text = "$f_{1,0}$"
     elif param_name == "f_mid_start":
-        label_text = r"$\it{f_{midStart,0}}$"
+        label_text = "$f_{2,0}$"
     elif param_name == "f_mid_end":
-        label_text = r"$\it{f_{midEnd,0}}$"
+        label_text = "$f_{3,0}$"
     elif param_name == "f_flat_end":
-        label_text = r"$\it{f_{flatEnd,0}}$"
+        label_text = "$f_{4,0}$"
     else:
         label_text = rf"$\it{{{param_name}}}_0$"
     # position label slightly above the plot bottom
@@ -174,6 +174,8 @@ def plot_sweep_multi_metric(
             ax.legend()
 
     plt.tight_layout(rect=(0, 0, 0.96, 0.96) if legend_outside else None)
+    plt.xticks(fontsize=14)
+    plt.yticks(fontsize=14)
     plt.show()
 
     return df

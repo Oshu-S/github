@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.fft import fft, ifft, fftfreq
+from scipy.signal import welch
 from tabulate import tabulate
 
 # ---- Function Parameters ----
@@ -49,7 +50,6 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     
     # 2) Weighting on positive freqs
     positive_freqs = freq_vector[:n//2 + 1]
-    positive_freqs = np.maximum(positive_freqs, 0)  # clamp any small negatives to 0
     positive_magnitude = magnitude[:n//2 + 1]
     W = np.zeros_like(positive_freqs)
     val_low = low_gain
@@ -150,31 +150,76 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     mask = positive_freqs > 0 # avoid plotting the zero frequency point (0 Hz) on log-log scale since log(0)→−∞
     if plot:
         plt.figure(figsize=(8, 4.5))
-        plt.loglog(positive_freqs[mask], W[mask]) 
-        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
+        plt.loglog(positive_freqs[mask], W[mask])
+        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 8, 16, 31.5, 63])
         plt.xticks(octave_centers, [str(f) for f in octave_centers])
         # Comment out if you want to hover over y-axis values
-        plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 1.5], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "1.5"])
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Frequency Weighting")
+        plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1"])
+        plt.ylim([0.01,1.5])
+        plt.xlabel("$f$ (Hz)", fontsize=12)
+        plt.ylabel("Frequency Weighting", fontsize=12)
         # plt.title("Asymptotic Approximation of Vertical Frequency Weighting")
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
         plt.tight_layout()
-    if plot:
-        if show_knots:
-            # vertical knots for frequency breakpoints
-            for x, lab in [(f_low, r"$\it{f_{low}}$"), (f_mid_start, r"$\it{f_{midStart}}$"),
-                        (f_mid_end, r"$\it{f_{midEnd}}$"), (f_flat_end, r"$\it{f_{flatEnd}}$")]:
-                plt.axvline(x, ls="--", lw=1.0, color="r", alpha=0.6)
-                ylab = max(np.min(W[W > 0]), 1e-3)
-                plt.text(x, 1.1 * ylab, lab, color="r",
-                        rotation=90, va="bottom", ha="right", fontsize=14)
+    if plot and show_knots:
+        ax = plt.gca()
 
-        # horizontal knot for lowGain (place label near the left x-limit actually used)
-        x_left = float(np.min(positive_freqs[mask])) if np.any(mask) else f_low
-        plt.axhline(low_gain, ls="--", lw=1.0, color="g", alpha=0.6)
-        plt.text(x_left * 1.1, low_gain * 1.05, r"$\it{lowGain}$", color="g",
-                va="bottom", ha="left", fontsize=10)
+        # --- vertical knots (f₁..f₄) ---
+        x_knots = [
+            (f_low,  "$f_1$", "r"),
+            (f_mid_start, "$f_2$", "r"),
+            (f_mid_end, "$f_3$", "r"),
+            (f_flat_end, "$f_4$", "r"),
+        ]
+
+        # --- horizontal knot (w) ---
+        y_knot = (low_gain, "$w$", "g")
+
+        # --- draw vertical and horizontal dashed lines ---
+        for x, label, color in x_knots:
+            ax.axvline(x, ls="--", lw=1.0, color=color, alpha=0.7)
+            ylab = max(np.min(W[W > 0]), 1e-3)
+            ax.text(x, 1.1 * ylab, label, color=color,
+                    rotation=90, va="bottom", ha="right", fontsize=15, fontweight="bold")
+
+        ax.axhline(y_knot[0], ls="--", lw=1.0, color=y_knot[2], alpha=0.7)
+        ax.text(0.018, y_knot[0]*1.05, y_knot[1], color=y_knot[2],
+                va="bottom", ha="left", fontsize=15, fontweight="bold")
+
+        # --- place numeric knot values *on* the axes without deleting existing ticks ---
+        # convert log coords → axis space
+        trans_x = ax.get_xaxis_transform()  # x in data coords, y in axes coords
+        trans_y = ax.get_yaxis_transform()  # y in data coords, x in axes coords
+
+        # small offsets for placement
+        y_offset_xaxis = -0.025   # move red x-axis labels slightly BELOW the axis
+        x_offset_yaxis = -0.048   # move green y-axis label slightly LEFT of the axis
+
+        # vertical knot numeric values (red) → on bottom x-axis
+        for x, _, color in x_knots:
+            ax.text(
+                x, y_offset_xaxis, f"{x:.1f}",
+                color=color, fontsize=10, fontweight="bold",
+                ha="center", va="top", transform=trans_x,
+                clip_on=False,
+                bbox=dict(fc="white", ec="none", alpha=0.7, pad=0.2)
+            )
+
+        # horizontal knot numeric value (green) → on left y-axis
+        ax.text(
+            x_offset_yaxis, y_knot[0], f"{y_knot[0]:g}",
+            color=y_knot[2], fontsize=10, fontweight="bold",
+            ha="left", va="center", transform=trans_y,
+            clip_on=False,
+            bbox=dict(fc="white", ec="none", alpha=0.7, pad=0.2)
+        )
+
+        # restore limits (in case autoscale shifted due to text)
+        # ax.set_xlim(np.min(positive_freqs[mask]), np.max(positive_freqs[mask]))
+        # ax.set_ylim(np.min(W[mask]), np.max(W[mask]))
+
+
+
 
     # --- PLOT: Running 1 s RMS vs time (centered timestamps) ---
     # For mode='valid', the i-th value corresponds to samples [i, i+win-1].
@@ -184,33 +229,22 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     
     # Time histories/Running 1 s RMS
     if plot:
-        plt.figure(figsize=(8, 6))
-        plt.plot(t, acceleration, label="Acceleration (unweighted)")
-        plt.plot(t_rms, rms_running_unweighted, label="Running RMS (1 s) (unweighted)")
-        plt.plot(t, weighted_signal, label="Acceleration (weighted)")
-        plt.plot(t_rms, rms_running_weighted, label="Running RMS (1 s) (weighted)")
+        plt.figure(figsize=(6.5, 4.5))
+        plt.plot(t, acceleration, label="$a$ (unweighted)")
+        plt.plot(t_rms, rms_running_unweighted, label="1 s RMS (unweighted)")
+        plt.plot(t, weighted_signal, label="$a$ (weighted)", color="y")
+        plt.plot(t_rms, rms_running_weighted, label="1 s RMS (weighted)", color="r")
         # plt.title("Time History of Unweighted Acceleration")
-        plt.xlabel("Time (s)", fontsize=15)
-        plt.ylabel("Acceleration (m/s²)", fontsize=15)
-        plt.yticks(np.arange(-1.2, 1.2, step=0.2))
-        plt.ylim(-1.1, 1.1)
+        plt.xlabel("$t$ (s)", fontsize=15)
+        plt.xticks(fontsize=14)
+        plt.ylabel("$a$ (m/s²)", fontsize=15)
+        plt.yticks(np.arange(-1.4, 1.4, step=0.4), fontsize=12)
+        plt.ylim(-1.2, 1.2)
         plt.legend(loc='lower left', fontsize=13)
         plt.grid(True)
         plt.tight_layout()
+        
     
-    # # Time histories/Running 1 s RMS (weighted)
-    # plt.figure(figsize=(10, 5))
-    # plt.plot(t, weighted_signal, label="Acceleration")
-    # plt.plot(t_rms, rms_running_weighted, label="Running RMS (1 s)")
-    # # plt.title("Time History of Weighted Acceleration")
-    # plt.xlabel("Time (s)")
-    # plt.ylabel("Acceleration (m/s²)")
-    # plt.yticks(np.arange(-1.2, 1.2, step=0.2))
-    # plt.ylim(-1.1, 1.1)
-    # plt.legend(loc='upper left')
-    # plt.grid(True)
-    # plt.tight_layout()
-
     # Spectra FFT (unweighted vs weighted)
     if plot:
         plt.figure(figsize=(6, 4))
@@ -221,9 +255,36 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
         plt.ylabel("Amplitude (m/s²)", fontsize=12)
         plt.legend(fontsize=12)
         plt.xticks(np.arange(0, 20, step=2))
-        plt.xlim(0, 20)
+        plt.xlim(0, 10)
         # plt.ylim(0, 0.031)
         plt.grid(True)
+        plt.tight_layout()
+        
+    # ---------- PSD (Welch) ----------
+    nperseg = min(1024, n)           # segment length
+    noverlap = nperseg // 2          # 50% overlap
+    window = "hann"
+
+    f_psd, Pxx   = welch(acceleration, fs=fs, nperseg=nperseg, noverlap=noverlap,
+                         window=window, detrend="constant", scaling="density")
+    _,    Pxx_w  = welch(weighted_signal, fs=fs, nperseg=nperseg, noverlap=noverlap,
+                         window=window, detrend="constant", scaling="density")
+
+    # PSD plot (log–log). Avoid f=0 for log axis.
+    if plot:
+        plt.figure(figsize=(6.5, 4.5))
+        mpos = f_psd > 0
+        plt.loglog(f_psd[mpos], Pxx[mpos], label="Unweighted")
+        plt.loglog(f_psd[mpos], Pxx_w[mpos], label="Weighted")
+        plt.xlabel("$f$ (Hz)", fontsize=15)
+        plt.ylabel(r"PSD $[(\mathrm{m/s}^2)^2/\mathrm{Hz}]$", fontsize=15)
+        plt.legend(fontsize=13)
+        plt.xlim(0.25, 20)
+        plt.ylim(1e-17,10)
+        PSD_xticks = np.array([0.25, 0.5, 1, 2, 4, 8, 16])
+        plt.xticks(PSD_xticks, [str(f) for f in PSD_xticks], fontsize=12)
+        plt.yticks(fontsize=12)
+        plt.grid(True, which="both", linestyle="--", linewidth=0.5)
         plt.tight_layout()
     
     df_metrics = pd.DataFrame(metrics, index=["Unweighted", "Weighted"])
@@ -231,4 +292,10 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
     if plot:
         plt.show()
 
-    return t, acceleration, weighted_signal, t_rms, rms_running_unweighted, rms_running_weighted, df_metrics, positive_freqs, positive_magnitude, weighted_magnitude_pos
+    return (
+        t, acceleration, weighted_signal,
+        t_rms, rms_running_unweighted, rms_running_weighted,
+        df_metrics,
+        positive_freqs, positive_magnitude, weighted_magnitude_pos,
+        f_psd, Pxx, Pxx_w
+    )
