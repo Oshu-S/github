@@ -154,7 +154,8 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
         octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 8, 16, 31.5, 63])
         plt.xticks(octave_centers, [str(f) for f in octave_centers])
         # Comment out if you want to hover over y-axis values
-        plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1"])
+        weightticks = np.array([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1])
+        plt.yticks(weightticks, [str(f) for f in weightticks])
         plt.ylim([0.01,1.5])
         plt.xlabel("$f$ (Hz)", fontsize=12)
         plt.ylabel("Frequency Weighting", fontsize=12)
