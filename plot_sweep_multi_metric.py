@@ -47,7 +47,7 @@ def plot_sweep_multi_metric(
 
     # Parameter pretty labels (with units where relevant)
     param_pretty = {
-        "low_gain": "$w$ (dB)",
+        "low_gain": "$w$ (weighting factor)",
         "f_low": "$f_1$ (Hz)",
         "f_mid_start": "$f_2$ (Hz)",
         "f_mid_end": "$f_3$ (Hz)",
@@ -129,14 +129,14 @@ def plot_sweep_multi_metric(
     ax.set_xlabel(xlab, fontsize=14)
 
     # If only one metric → use its pretty name
-    ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to baseline", fontsize=15)
+    ax.set_ylabel(r"% change in $a_\mathrm{W}$ relative to baseline", fontsize=15)
 
     if title is None:
         ax.set_title(f"% change in weighted RMS acceleration vs {xlab}")
 
 
     else:
-        ax.set_ylabel(r"% change in $a_\mathrm{RMS}$ relative to $a_\mathrm{RMS,0}$")
+        ax.set_ylabel(r"% change in $a_\mathrm{W}$ relative to $a_\mathrm{W,0}$")
         if title is None:
             ax.set_title(f"% change in selected metrics vs {xlab}")
 
@@ -163,7 +163,7 @@ def plot_sweep_multi_metric(
         label_text = rf"$\it{{{param_name}}}_0$"
     # position label slightly above the plot bottom
     ymin, ymax = ax.get_ylim()
-    ax.text(baseline_val, ymin + 0.1*(ymax - ymin), label_text,
+    ax.text(baseline_val+0.1, ymin + 0.1*(ymax - ymin), label_text,
             color="r", fontsize=18, rotation=90,
             va="bottom", ha="left", fontweight="bold")
 

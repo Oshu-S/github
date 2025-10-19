@@ -17,7 +17,7 @@ fc1, c1 = plot_equivalent_comfort_contour(
     tail_exponent=1.0,       # high-freq tail ~ 1 / f^tail_exponent (6 dB/oct ≈ 1.0)
     # amplitude/anchoring (in acceleration units)
     base_level=1,          # m/s² when W ≈ 1 (flat region)
-    target_point=(2,0.75),       # (f_target [Hz], a_target [m/s²]) → force contour through this point
+    target_point=(2,1.25),       # (f_target [Hz], a_target [m/s²]) → force contour through this point
     # visuals
     show_knots=True, plot=False,
     title="Equivalent Comfort Contour (acceleration)"
@@ -40,17 +40,17 @@ fc2, c2 = plot_equivalent_comfort_contour(
 
 # fig 1
 plt.figure(figsize=(7, 7))
-plt.loglog(fc1, c1, color="C0", linewidth=2,  label="2 Hz, 0.75 m/s² \"reference\"") # Lower Bound
+plt.loglog(fc1, c1, color="C0", linewidth=2,  label="2 Hz, 1.25 m/s² \"reference\"") # Lower Bound
 plt.loglog(fc2, c2, color="C1", linewidth=2,  label="10 Hz, 0.5 m/s² \"reference\"") # Lower Bound
-plt.loglog(2, 0.75, marker="o", color="C0", markersize=8)
+plt.loglog(2, 1.25, marker="o", color="C0", markersize=8)
 plt.loglog(10, 0.5, marker="o", color="C1", markersize=8)
 plt.xlabel("Frequency (Hz)", fontsize=labsize)
 plt.ylabel("$a$ (m/s$^2$ RMS)", fontsize=labsize)
 octave_centers = np.array([0.5, 0.8, 1.25, 2.0, 3.15, 5.0, 8.0, 12.5, 20.0])
 plt.xticks(octave_centers, [str(f) for f in octave_centers], fontsize=ticksize)
-magnitude_ticks = [0.10, 0.16, 0.25, 0.40, 0.63, 1.0, 1.6, 2.5]
+magnitude_ticks = [0.16, 0.25, 0.40, 0.63, 1.0, 1.6, 2.5]
 plt.yticks(magnitude_ticks, [str(f) for f in magnitude_ticks], fontsize=ticksize)
-plt.ylim(0.09, 3)
+plt.ylim(0.15, 3)
 plt.grid(True, which="both", linestyle="--", linewidth=0.5)
 plt.legend(loc='lower left', bbox_to_anchor=(0, -0.01), fontsize=legsize, framealpha=1.0) # loc='lower left', bbox_to_anchor=(0.4, 0.05)
 plt.tight_layout()
