@@ -40,8 +40,8 @@ fc2, c2 = plot_equivalent_comfort_contour(
 
 # fig 1
 plt.figure(figsize=(7, 7))
-plt.loglog(fc1, c1, color="C0", linewidth=2,  label="2 Hz, 1.25 m/s² \"reference\"") # Lower Bound
-plt.loglog(fc2, c2, color="C1", linewidth=2,  label="10 Hz, 0.5 m/s² \"reference\"") # Lower Bound
+plt.loglog(fc1, c1, color="C0", linewidth=2,  label="2 Hz, 1.25 m/s² RMS \"reference\"") # Lower Bound
+plt.loglog(fc2, c2, color="C1", linewidth=2,  label="10 Hz, 0.5 m/s² RMS \"reference\"") # Lower Bound
 plt.loglog(2, 1.25, marker="o", color="C0", markersize=8)
 plt.loglog(10, 0.5, marker="o", color="C1", markersize=8)
 plt.xlabel("Frequency (Hz)", fontsize=labsize)
