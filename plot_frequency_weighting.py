@@ -19,11 +19,7 @@ def plot_frequency_weighting(
     title="Asymptotic Approximation of Vertical Frequency Weighting"
 ):
     """
-    Build and plot a frequency weighting W(f).
-
-    Tail steepness:
-      - Set `tail_exponent=beta` for W ~ (f_flat_end/f)^beta (straight line on log–log).
-      - Or pass `tail_db_per_oct` (positive) to target a slope in dB/oct; e.g. 6 → beta≈1.
+    Build and (optionally) plot a frequency weighting W(f).
     """
     # --- validate / sanitize ---
     eps = 1e-9
@@ -33,22 +29,21 @@ def plot_frequency_weighting(
     f_flat_end  = max(f_mid_end + eps, float(f_flat_end))
     low_gain    = float(low_gain)
 
-    # convert desired dB/oct to exponent if provided
+    # optional: map desired |dB/oct| to exponent
     if tail_db_per_oct is not None:
-        # |dB/oct| = 20*log10(2^beta) = 6.0206*beta  →  beta = |dB/oct| / 6.0206
         tail_exponent = float(tail_db_per_oct) / (20.0 * np.log10(2.0))
-    tail_exponent = max(tail_exponent, eps)  # keep positive
+    tail_exponent = max(tail_exponent, eps)
 
     # frequency grid (log-spaced for smooth log–log plots)
-    f = np.logspace(np.log10(fmin), np.log10(fmax), n_points)
+    f = np.logspace(np.log10(fmin), np.log10(fmax), int(n_points))
 
-    # piecewise weighting
+    # --- build weighting W(f) ---
     W = np.zeros_like(f, dtype=float)
     val_low  = low_gain
     val_flat = 1.0
     f_flat_start = f_mid_end
 
-    # seg 0: 0..f_low (linear rise up to low plateau)
+    # seg 0: 0..f_low (linear rise to low plateau)
     m0 = (f > 0.0) & (f < f_low)
     W[m0] = val_low * (f[m0] / f_low)
 
@@ -60,11 +55,9 @@ def plot_frequency_weighting(
     m2 = (f > f_mid_start) & (f <= f_mid_end)
     if np.any(m2):
         if log_ramp:
-            # power-law ramp: straight line on log–log, exact at endpoints
             alpha = np.log(val_flat / val_low) / np.log(f_mid_end / f_mid_start)
             W[m2] = val_low * (f[m2] / f_mid_start) ** alpha
         else:
-            # linear in frequency (appears curved on log–log)
             W[m2] = val_low + (val_flat - val_low) * (
                 (f[m2] - f_mid_start) / (f_mid_end - f_mid_start)
             )
@@ -75,32 +68,81 @@ def plot_frequency_weighting(
 
     # seg 4: > f_flat_end (power-law tail; straight on log–log)
     m4 = (f > f_flat_end)
-    # continuity at f_flat_end is automatic: W(f_flat_end) = val_flat
     W[m4] = val_flat * (f_flat_end / f[m4]) ** tail_exponent
 
-    # --- plot ---
+    # --- plot (match appearance from analyze_vibration) ---
     if plot:
-        plt.figure(figsize=(12, 5))
-        plt.loglog(f, W)
-        plt.xlabel("Frequency (Hz)")
-        plt.ylabel("Frequency Weighting")
-        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
-        plt.xticks(octave_centers, [str(f) for f in octave_centers])
-        # Comment out if you want to hover over y-axis values
-        # plt.yticks([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2], ["0.01", "0.02", "0.05", "0.1", "0.2", "0.5", "1", "2"])
-        plt.title(title)
+        mask = f > 0  # avoid log(0)
+        plt.figure(figsize=(8, 4.5))
+        plt.loglog(f[mask], W[mask])
+
+        # X ticks and labels
+        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 8, 16, 31.5, 63])
+        plt.xticks(octave_centers, [str(x) for x in octave_centers])
+
+        # Y ticks/limits to match your other plot
+        weightticks = np.array([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1])
+        plt.yticks(weightticks, [str(y) for y in weightticks])
+        plt.ylim([0.005, 1.5])
+        plt.xlim(0.016, 63)
+
+        # Axis labels (same naming)
+        plt.xlabel("$f$ (Hz)", fontsize=12)
+        plt.ylabel("Weighting Factor", fontsize=12)
+
+        # Grid + layout
         plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-
-        if show_knots:
-            for x, lab in [(f_low, "fLow"), (f_mid_start, "fMidStart"),
-                           (f_mid_end, "fMidEnd"), (f_flat_end, "fFlatEnd")]:
-                plt.axvline(x, ls="--", lw=1.0, color="r", alpha=0.6)
-                # put labels just above the lowest visible weighting to keep tidy
-                ylab = max(np.min(W[W>0]), 1e-3)
-                plt.text(x, 1.1*ylab, lab, color="r",
-                         rotation=90, va="bottom", ha="right", fontsize=9)
-
         plt.tight_layout()
+
+        # Knot overlays (match style)
+        if show_knots:
+            ax = plt.gca()
+
+            # vertical knot lines & labels
+            x_knots = [
+                (f_low,        r"$f_1$", "r"),
+                (f_mid_start,  r"$f_2$", "r"),
+                (f_mid_end,    r"$f_3$", "r"),
+                (f_flat_end,   r"$f_4$", "r"),
+            ]
+            # horizontal knot (w)
+            y_knot = (low_gain, r"$w$", "g")
+
+            # draw lines + text
+            for x, lab, color in x_knots:
+                ax.axvline(x, ls="--", lw=1.0, color=color, alpha=0.7)
+                ylab = max(np.min(W[W > 0]), 1e-3)
+                ax.text(x, 1.1 * ylab, lab, color=color,
+                        rotation=90, va="bottom", ha="right",
+                        fontsize=15, fontweight="bold")
+
+            ax.axhline(y_knot[0], ls="--", lw=1.0, color=y_knot[2], alpha=0.7)
+            ax.text(0.018, y_knot[0]*1.05, y_knot[1], color=y_knot[2],
+                    va="bottom", ha="left", fontsize=15, fontweight="bold")
+
+            # put numeric values on axes (same trick with transforms)
+            trans_x = ax.get_xaxis_transform()
+            trans_y = ax.get_yaxis_transform()
+            y_offset_xaxis = -0.025
+            x_offset_yaxis = -0.048
+
+            for x, _, color in x_knots:
+                ax.text(
+                    x, y_offset_xaxis, f"{x:.1f}",
+                    color=color, fontsize=10, fontweight="bold",
+                    ha="center", va="top", transform=trans_x,
+                    clip_on=False,
+                    bbox=dict(fc="white", ec="none", alpha=0.7, pad=0.2)
+                )
+
+            ax.text(
+                x_offset_yaxis, y_knot[0], f"{y_knot[0]:g}",
+                color=y_knot[2], fontsize=10, fontweight="bold",
+                ha="left", va="center", transform=trans_y,
+                clip_on=False,
+                bbox=dict(fc="white", ec="none", alpha=0.7, pad=0.2)
+            )
+
         plt.show()
 
     return f, W

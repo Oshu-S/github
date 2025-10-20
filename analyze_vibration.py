@@ -156,7 +156,8 @@ def analyze_vibration(file_path, trial, low_gain=0.4, f_low=0.5, f_mid_start=2.0
         # Comment out if you want to hover over y-axis values
         weightticks = np.array([0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1])
         plt.yticks(weightticks, [str(f) for f in weightticks])
-        plt.ylim([0.01,1.5])
+        plt.ylim([0.005,1.5])
+        plt.xlim(0.016, 63)
         plt.xlabel("$f$ (Hz)", fontsize=12)
         plt.ylabel("Weighting Factor", fontsize=12)
         # plt.title("Asymptotic Approximation of Vertical Frequency Weighting")

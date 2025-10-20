@@ -188,3 +188,17 @@ plt.show()
 # plt.legend(fontsize=13, framealpha=1.0)
 # plt.tight_layout()
 # plt.show()
+
+# Baseline --> fMidStart = 2.0 Hz
+f1, W1 = plot_frequency_weighting(
+    low_gain=0.4, f_low=0.5, f_mid_start=2.0, f_mid_end=5.0, f_flat_end=16.0,
+    # plotting domain
+    fmin=0.016, fmax=63.0, n_points=2000,
+    # shape controls
+    log_ramp=True,             # ramp (f_mid_start → f_mid_end) straight on log–log
+    tail_exponent=1.0,         # high-freq slope: W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
+    tail_db_per_oct=None,      # optional: override beta using desired |dB/oct| (e.g., 6, 9, 12)
+    # visuals
+    show_knots=True, plot=True,
+    title="Asymptotic Approximation of Vertical Frequency Weighting"
+)
