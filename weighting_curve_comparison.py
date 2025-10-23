@@ -14,7 +14,7 @@ f1, W1 = plot_frequency_weighting(
     tail_exponent=1.0,         # high-freq slope: W ∝ f^{-beta} (beta=1 ⇒ −6 dB/oct)
     tail_db_per_oct=None,      # optional: override beta using desired |dB/oct| (e.g., 6, 9, 12)
     # visuals
-    show_knots=True, plot=False,
+    show_knots=False, plot=True,
     title="Asymptotic Approximation of Vertical Frequency Weighting"
 )
 

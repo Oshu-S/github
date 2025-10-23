@@ -77,7 +77,7 @@ def plot_frequency_weighting(
         plt.loglog(f[mask], W[mask])
 
         # X ticks and labels
-        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 8, 16, 31.5, 63])
+        octave_centers = np.array([0.016, 0.0315, 0.063, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 31.5, 63])
         plt.xticks(octave_centers, [str(x) for x in octave_centers])
 
         # Y ticks/limits to match your other plot
